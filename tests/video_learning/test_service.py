@@ -263,6 +263,45 @@ async def test_missing_transcript_does_not_block_native_playback(
 
 
 @pytest.mark.asyncio
+async def test_refresh_youtube_transcript_preserves_playback_and_progress(
+    monkeypatch, isolated: Path
+) -> None:
+    material_id = service.material_id_for("dQw4w9WgXcQ")
+    store = service.get_timed_media_store()
+    store.save(
+        {
+            "version": 1,
+            "type": "timed_media",
+            "material_id": material_id,
+            "source": {
+                "provider": "youtube",
+                "video_id": "dQw4w9WgXcQ",
+                "url": "https://youtu.be/dQw4w9WgXcQ",
+            },
+            "metadata": {"title": "Retry lesson", "duration_seconds": 120},
+            "transcript": {"status": "unavailable", "reason": "unavailable", "cues": []},
+            "segments": [],
+            "learning": {"last_position": 42},
+            "provider_cache": {},
+        }
+    )
+
+    async def transcript(_video_id: str, _language: str):
+        return ([{"start": 1, "end": 4, "text": "Recovered caption."}], "en", "youtube_transcript_api")
+
+    monkeypatch.setattr(service, "_youtube_transcript", transcript)
+
+    refreshed = await service.refresh_transcript(material_id)
+
+    assert refreshed["transcript"]["status"] == "ready"
+    assert refreshed["segments"] == [
+        {"locator": 1, "start": 1, "end": 4, "text": "Recovered caption."}
+    ]
+    assert refreshed["learning"]["last_position"] == 42
+    assert refreshed["playback"]["provider"] == "youtube"
+
+
+@pytest.mark.asyncio
 async def test_refresh_invidious_transcript_preserves_playback_and_progress(
     monkeypatch, isolated: Path
 ) -> None:

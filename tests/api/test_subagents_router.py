@@ -130,6 +130,15 @@ def test_connect_rejects_unknown_kind(client):
     assert res.status_code == 400
 
 
+def test_connect_rejects_unavailable_local_agent(client):
+    res = client.post(
+        "/api/subagents/connections",
+        json={"name": "MyCodex", "agent_kind": "codex"},
+    )
+    assert res.status_code == 409
+    assert "not installed" in res.json()["detail"]
+
+
 def test_connect_remote_backend_does_not_persist_a_local_cwd(client):
     created = client.post(
         "/api/subagents/connections",

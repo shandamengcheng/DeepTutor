@@ -58,6 +58,10 @@ import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
 import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
 import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
 import { apiUrl } from "@/lib/api";
+import {
+  listAllSessions,
+  type SessionSummary,
+} from "@/lib/session-api";
 import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
 import type { StreamEvent } from "@/features/chat/model/protocol";
 import {
@@ -230,6 +234,40 @@ function subagentTabIdFor(callId: string): string {
   return `subagent:${callId}`;
 }
 
+function savedTutorTabContext(
+  session: SessionSummary,
+  language: string,
+): QuizFollowupTabContext {
+  const label = session.title || "Little Tutor";
+  const selectedText = session.title || session.last_message || label;
+  return {
+    questionKey: `saved-selection-tutor:${session.session_id}`,
+    question: {
+      question_id: session.session_id,
+      question: selectedText,
+      question_type: "concept",
+      correct_answer: "",
+      explanation: "",
+    },
+    userAnswer: "",
+    isCorrect: null,
+    answerImages: [],
+    aiJudgment: "",
+    parentQuizSessionId: null,
+    notebookEntryId: null,
+    followupSessionId: session.session_id,
+    language,
+    tabLabel: label,
+    tutorSelection: {
+      selectedText,
+      parentSessionId: session.preferences?.parent_session_id ?? null,
+      sourceMessageId: null,
+      sourceMessageText: selectedText,
+      sourceMessageRole: "assistant",
+    },
+  };
+}
+
 function hostnameFor(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -265,9 +303,14 @@ function SessionViewerPanelInner(
   }: SessionViewerPanelProps,
   ref: React.Ref<SessionViewerPanelHandle>,
 ) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [tabs, setTabs] = useState<ViewerTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [tutorSessions, setTutorSessions] = useState<SessionSummary[]>([]);
+  const [tutorSessionsLoading, setTutorSessionsLoading] = useState(false);
+  const [activeTutorSessionId, setActiveTutorSessionId] = useState<
+    string | null
+  >(null);
 
   // Drag-to-resize width. The width is NOT React state — the panel reads it
   // from the ``--viewer-width`` CSS var (so does the chat shell's squeeze),
@@ -332,7 +375,42 @@ function SessionViewerPanelInner(
     setTrackedSessionId(sessionId);
     setTabs([]);
     setActiveTabId(null);
+    setTutorSessions([]);
+    setTutorSessionsLoading(false);
+    setActiveTutorSessionId(null);
   }
+
+  useEffect(() => {
+    if (!open || !sessionId) return;
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => {
+        if (cancelled) return null;
+        setTutorSessionsLoading(true);
+        return listAllSessions();
+      })
+      .then((rows) => {
+        if (cancelled || !rows) return;
+        setTutorSessions(
+          rows
+            .filter(
+              (session) =>
+                session.preferences?.session_kind === "selection_tutor" &&
+                session.preferences?.parent_session_id === sessionId,
+            )
+            .sort((a, b) => b.updated_at - a.updated_at),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setTutorSessions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTutorSessionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, sessionId]);
 
   const openFileTab = useCallback(
     (a: MessageAttachment) => {
@@ -556,6 +634,7 @@ function SessionViewerPanelInner(
   // capability-config card surfaces). Used by the send-gate.
   const focusActivityHome = useCallback(() => {
     setActiveTabId(null);
+    setActiveTutorSessionId(null);
     onAutoOpen();
   }, [onAutoOpen]);
 
@@ -622,6 +701,9 @@ function SessionViewerPanelInner(
   // paste a URL or pick a local file to open as the first tab.
   const visible = open;
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const activeTutorSession =
+    tutorSessions.find((session) => session.session_id === activeTutorSessionId) ??
+    null;
 
   const openLocalFile = useCallback(
     (file: File) => {
@@ -676,8 +758,17 @@ function SessionViewerPanelInner(
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
-        homeActive={activeTab === null}
-        onSelectHome={() => setActiveTabId(null)}
+        homeActive={activeTab === null && activeTutorSession === null}
+        tutorSessions={tutorSessions}
+        activeTutorSessionId={activeTutorSession?.session_id ?? null}
+        onSelectHome={() => {
+          setActiveTabId(null);
+          setActiveTutorSessionId(null);
+        }}
+        onSelectTutorSession={(tutorSessionId) => {
+          setActiveTabId(null);
+          setActiveTutorSessionId(tutorSessionId);
+        }}
         onSelect={setActiveTabId}
         onCloseTab={closeTab}
         onClosePanel={onClose}
@@ -709,6 +800,14 @@ function SessionViewerPanelInner(
             key={activeTab.id}
             tabEvents={activeTab.events}
             sessionId={sessionId}
+          />
+        ) : activeTutorSession ? (
+          <QuizFollowupTabBody
+            key={activeTutorSession.session_id}
+            context={savedTutorTabContext(
+              activeTutorSession,
+              i18n.resolvedLanguage ?? i18n.language,
+            )}
           />
         ) : (
           <ActivityHome
@@ -743,7 +842,10 @@ function TabBar({
   tabs,
   activeTabId,
   homeActive,
+  tutorSessions,
+  activeTutorSessionId,
   onSelectHome,
+  onSelectTutorSession,
   onSelect,
   onCloseTab,
   onClosePanel,
@@ -751,7 +853,10 @@ function TabBar({
   tabs: ViewerTab[];
   activeTabId: string | null;
   homeActive: boolean;
+  tutorSessions: SessionSummary[];
+  activeTutorSessionId: string | null;
   onSelectHome: () => void;
+  onSelectTutorSession: (sessionId: string) => void;
   onSelect: (id: string) => void;
   onCloseTab: (id: string) => void;
   onClosePanel: () => void;
@@ -776,6 +881,26 @@ function TabBar({
           <Activity size={11} strokeWidth={1.9} className="shrink-0" />
           <span>{t("Activity")}</span>
         </button>
+        {tutorSessions.map((session) => {
+          const active = session.session_id === activeTutorSessionId;
+          const label = session.title || t("Little Tutor");
+          return (
+            <button
+              key={session.session_id}
+              type="button"
+              onClick={() => onSelectTutorSession(session.session_id)}
+              className={`inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
+                active
+                  ? "bg-[var(--card)] text-[var(--foreground)]"
+                  : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
+              }`}
+              title={label}
+            >
+              <GraduationCap size={11} strokeWidth={1.9} className="shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          );
+        })}
         {tabs.map((tab) => {
           const active = tab.id === activeTabId;
           const Icon =

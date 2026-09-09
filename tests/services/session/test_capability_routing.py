@@ -46,6 +46,7 @@ def _configure_runtime(monkeypatch: pytest.MonkeyPatch, captured: dict) -> None:
         async def handle(self, context):
             captured["active_capability"] = context.active_capability
             captured["metadata"] = context.metadata
+            captured["knowledge_bases"] = context.knowledge_bases
             yield StreamEvent(
                 type=StreamEventType.CONTENT,
                 content="ok",
@@ -111,6 +112,34 @@ async def test_quiz_requests_stay_in_chat_by_default(tmp_path) -> None:
     assert captured["metadata"]["capability_route"] is None
     assert "capability_route" not in captured["done_metadata"]
     assert session["preferences"]["capability"] == "chat"
+
+
+@pytest.mark.asyncio
+async def test_turn_defaults_to_the_only_available_local_agent(tmp_path, monkeypatch) -> None:
+    captured: dict = {"global_enabled": False}
+    _configure_runtime(monkeypatch, captured)
+
+    async def _only_local_agent(_selected_refs):
+        return "local-codex"
+
+    monkeypatch.setattr(
+        "deeptutor.capabilities.subagent.binding.default_local_agent_ref",
+        _only_local_agent,
+    )
+    monkeypatch.setattr(
+        "deeptutor.capabilities.subagent.binding.connection_for_turn",
+        lambda context: {"name": "local-codex", "kind": "codex"}
+        if "local-codex" in context.knowledge_bases
+        else None,
+    )
+    monkeypatch.setattr(
+        "deeptutor.services.model_selection.runtime.activate_llm_selection",
+        lambda _selection: (_ for _ in ()).throw(AssertionError("cloud model must not resolve")),
+    )
+    _, session = await _run_quiz_turn(tmp_path, captured)
+
+    assert captured["knowledge_bases"] == ["local-codex"]
+    assert session["preferences"]["knowledge_bases"] == ["local-codex"]
 
 
 @pytest.mark.asyncio

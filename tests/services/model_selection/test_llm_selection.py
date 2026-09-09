@@ -1,6 +1,7 @@
 from deeptutor.services.model_selection import (
     LLMSelection,
     apply_llm_selection_to_catalog,
+    default_llm_selection,
     list_llm_options,
 )
 
@@ -63,9 +64,33 @@ def test_list_llm_options_is_redacted_and_marks_active_default():
     assert payload["options"][0]["context_window"] == 1000000
     assert payload["options"][0]["reasoning_effort"] == "high"
     assert payload["options"][0]["supported_reasoning_efforts"] == ["low", "high"]
+    assert payload["has_configured_llm"] is True
     assert "api_key" not in payload["options"][0]
     assert "base_url" not in payload["options"][0]
     assert "extra_headers" not in payload["options"][0]
+
+
+def test_list_llm_options_marks_keyless_remote_profiles_unconfigured():
+    catalog = _catalog()
+    catalog["services"]["llm"]["profiles"] = [
+        {
+            "id": "p1",
+            "name": "Remote",
+            "binding": "openai",
+            "api_key": "",
+            "models": [{"id": "m1", "name": "Tutor", "model": "gpt-4o-mini"}],
+        }
+    ]
+
+    assert list_llm_options(catalog)["has_configured_llm"] is False
+
+
+def test_default_llm_selection_uses_the_first_callable_option():
+    catalog = _catalog()
+    catalog["services"]["llm"]["active_profile_id"] = "p2"
+    catalog["services"]["llm"]["active_model_id"] = "m3"
+
+    assert default_llm_selection(catalog) == {"profile_id": "p1", "model_id": "m1"}
 
 
 def test_apply_llm_selection_to_catalog_returns_copy_with_selected_active_ids():

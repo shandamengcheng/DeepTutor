@@ -53,6 +53,49 @@ def _resolve(context: UnifiedContext) -> dict[str, str] | None:
     return None
 
 
+async def default_local_agent_ref(selected_refs: list[str] | None = None) -> str | None:
+    """Return the sole usable local-agent connection when none was chosen.
+
+    Connected agents are stored alongside knowledge bases, but a local CLI is
+    a turn-level execution target rather than retrieval data.  Resolve the
+    only when exactly one usable local CLI exists, and leave an explicit
+    subagent selection untouched. Partner connections are intentionally
+    excluded: they are remote people/agents, not a local execution default.
+    """
+
+    from deeptutor.multi_user.knowledge_access import current_kb_manager
+    from deeptutor.services.subagent import get_backend
+
+    manager = current_kb_manager()
+    selected = {str(ref).strip() for ref in selected_refs or [] if str(ref).strip()}
+    candidates: list[tuple[str, str]] = []
+    for name in manager.list_knowledge_bases():
+        meta = manager.get_metadata(name)
+        if not isinstance(meta, dict) or meta.get("type") != SUBAGENT_KB_TYPE:
+            continue
+        # A user-specified local or partner connection always wins over the
+        # automatic local default.
+        if name in selected:
+            return None
+        kind = str(meta.get("agent_kind") or "").strip()
+        backend = get_backend(kind)
+        if kind and backend is not None and getattr(backend, "local_cli", True):
+            candidates.append((name, kind))
+
+    available: list[str] = []
+    for name, kind in candidates:
+        backend = get_backend(kind)
+        if backend is None:
+            continue
+        try:
+            detection = await backend.detect()
+        except Exception:
+            continue
+        if detection.available:
+            available.append(name)
+    return available[0] if len(available) == 1 else None
+
+
 def subagent_refs(context: UnifiedContext) -> set[str]:
     """Return every selected KB ref that resolves to a connected subagent.
 
@@ -77,4 +120,4 @@ def subagent_refs(context: UnifiedContext) -> set[str]:
     return refs
 
 
-__all__ = ["connection_for_turn", "subagent_refs"]
+__all__ = ["connection_for_turn", "default_local_agent_ref", "subagent_refs"]

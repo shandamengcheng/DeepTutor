@@ -399,19 +399,24 @@ class AgenticLoopPipeline:
         self._exec_enabled = await self._exec_allowed(context)
         enabled_tools = self._compose_enabled_tools(context)
         use_native_tools = bool(enabled_tools) and self._can_use_native_tool_calling()
-        tool_schemas = (
-            self._build_llm_tool_schemas(enabled_tools, context) if use_native_tools else None
+        use_text_tools = bool(enabled_tools) and self._uses_text_tool_protocol()
+        tool_schema_catalog = (
+            self._build_llm_tool_schemas(enabled_tools, context)
+            if use_native_tools or use_text_tools
+            else None
         )
-        if tool_schemas is not None and self._tool_view is not None:
-            self._tool_view.attach(tool_schemas)
+        tool_schemas = tool_schema_catalog if use_native_tools else None
+        if tool_schema_catalog is not None and self._tool_view is not None:
+            self._tool_view.attach(tool_schema_catalog)
 
         loop = AgentLoop(
             pipeline=self,
             context=context,
             stream=stream,
             client=self._build_openai_client(),
-            enabled_tools=enabled_tools if use_native_tools else [],
+            enabled_tools=enabled_tools if use_native_tools or use_text_tools else [],
             tool_schemas=tool_schemas,
+            tool_schema_catalog=tool_schema_catalog,
         )
         self.last_result = await loop.run()
         return self.last_result
@@ -1655,7 +1660,17 @@ class AgenticLoopPipeline:
         )
 
     def _can_use_native_tool_calling(self) -> bool:
+        from deeptutor.capabilities.subagent.model_runtime import selected_subagent_is_active
+
+        if selected_subagent_is_active():
+            return False
         return can_use_native_tool_calling(binding=self.binding, model=self.model)
+
+    @staticmethod
+    def _uses_text_tool_protocol() -> bool:
+        from deeptutor.capabilities.subagent.model_runtime import selected_subagent_is_active
+
+        return selected_subagent_is_active()
 
     # ---- small helpers ---------------------------------------------------
 
@@ -1704,6 +1719,11 @@ class AgenticLoopPipeline:
         ``getattr`` so plain capabilities without the seam are unaffected.
         """
         owned: set[str] = set()
+        from deeptutor.capabilities.subagent.binding import subagent_refs
+        from deeptutor.capabilities.subagent.model_runtime import selected_subagent_is_active
+
+        if selected_subagent_is_active():
+            owned |= subagent_refs(context)
         for cap in self._active_loop_capabilities(context):
             hook = getattr(cap, "owned_kbs", None)
             if callable(hook):

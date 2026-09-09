@@ -64,6 +64,7 @@ export function useLLMOptions() {
   return {
     options: state.options,
     activeDefault: state.activeDefault,
+    hasConfiguredLLM: state.hasConfiguredLLM,
     loading: state.status === "loading",
     error: state.status === "error",
     refresh,

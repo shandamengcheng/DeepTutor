@@ -69,6 +69,14 @@ export interface VideoNote {
   updated_at: number;
 }
 
+export interface VideoCueTranslation {
+  cue_index: number;
+  target_language: "zh" | "en";
+  translation: string;
+  alternatives: string[];
+  note: string;
+}
+
 export interface VideoLearningSettings {
   version: 1;
   default_provider: VideoProvider;
@@ -208,7 +216,7 @@ export async function getVideoMaterial(
   );
 }
 
-export async function refreshInvidiousTranscript(
+export async function refreshVideoTranscript(
   materialId: string,
 ): Promise<TimedMediaMaterial> {
   return unwrap(
@@ -217,6 +225,25 @@ export async function refreshInvidiousTranscript(
         `/api/video-learning/materials/${encodeURIComponent(materialId)}/transcript/refresh`,
       ),
       { method: "POST" },
+    ),
+  );
+}
+
+export async function translateVideoCue(
+  materialId: string,
+  cueIndex: number,
+  targetLanguage: VideoCueTranslation["target_language"],
+): Promise<VideoCueTranslation> {
+  return unwrap(
+    await apiFetch(
+      apiUrl(
+        `/api/video-learning/materials/${encodeURIComponent(materialId)}/transcript/translate`,
+      ),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cue_index: cueIndex, target_language: targetLanguage }),
+      },
     ),
   );
 }

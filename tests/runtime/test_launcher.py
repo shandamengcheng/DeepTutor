@@ -43,12 +43,12 @@ def test_port_probe_detects_ipv6_only_loopback_listener(monkeypatch) -> None:
 
 def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) -> None:
     packaged = tmp_path / "pkg"
-    (packaged / ".next" / "static").mkdir(parents=True)
+    (packaged / ".next-desktop" / "static").mkdir(parents=True)
     (packaged / "server.js").write_text(
         "const api='__NEXT_PUBLIC_API_BASE_PLACEHOLDER__';",
         encoding="utf-8",
     )
-    (packaged / ".next" / "static" / "app.js").write_text(
+    (packaged / ".next-desktop" / "static" / "app.js").write_text(
         "auth='__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__'",
         encoding="utf-8",
     )
@@ -63,7 +63,9 @@ def test_packaged_web_cache_replaces_next_public_placeholders(tmp_path: Path) ->
     assert (runtime / "server.js").read_text(encoding="utf-8") == (
         "const api='http://localhost:8001';"
     )
-    assert "auth='true'" in (runtime / ".next" / "static" / "app.js").read_text(encoding="utf-8")
+    assert "auth='true'" in (
+        runtime / ".next-desktop" / "static" / "app.js"
+    ).read_text(encoding="utf-8")
 
 
 def test_runtime_home_rejects_project_data_paths(monkeypatch, tmp_path: Path) -> None:

@@ -1,6 +1,7 @@
 "use client";
 
 import { CategoryScroll } from "@/components/settings/CategoryScroll";
+import ConnectedAgents from "@/components/agents/ConnectedAgents";
 import { SubagentSettingsEditor } from "@/components/settings/SubagentSettingsEditor";
 import { useSettingsAccess } from "@/features/settings/navigation/SettingsAccessProvider";
 import { visibleSettingsChildren } from "@/features/settings/navigation/settings-nav";
@@ -29,6 +30,7 @@ const DeepSeekHarnessAgentSettingsPage = () => (
 );
 
 const AGENT_SECTIONS = [
+  { key: "agent-connections", Component: ConnectedAgents },
   { key: "agent-claude-code", Component: ClaudeCodeAgentSettingsPage },
   { key: "agent-codex", Component: CodexAgentSettingsPage },
   { key: "agent-antigravity", Component: AntigravityAgentSettingsPage },

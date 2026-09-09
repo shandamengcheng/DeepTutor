@@ -12,6 +12,15 @@ run_code_workspace/
 deeptutor/agents/question/reference_papers/
 deeptutor/services/rag/eg_only_for_analysis/
 /docs/
+# Keep the maintained architecture and feature reference under version control;
+# local plans, ADR drafts, screenshots, and generated documentation remain ignored.
+!/docs/
+/docs/*
+!/docs/README.md
+!/docs/architecture/
+!/docs/architecture/system-architecture.md
+!/docs/features/
+!/docs/features/*.md
 /site/
 .claude
 .agents/

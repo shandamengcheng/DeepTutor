@@ -117,6 +117,29 @@ class TestOrchestratorRouting:
         assert content_events[0].content == "hello"
 
     @pytest.mark.asyncio
+    async def test_selected_local_agent_preserves_capability_pipeline(self) -> None:
+        capability = _EchoCapability()
+        orch = _make_orchestrator({"visualize": capability})
+
+        ctx = UnifiedContext(
+            user_message="make a visualization",
+            active_capability="visualize",
+        )
+        async def _run_local_agent(context: UnifiedContext, stream: StreamBus) -> bool:
+            raise AssertionError("local Agent transport must not bypass the capability")
+
+        with patch(
+            "deeptutor.capabilities.subagent.direct.run_direct_subagent",
+            new=_run_local_agent,
+        ):
+            events: list[StreamEvent] = []
+            async for event in orch.handle(ctx):
+                events.append(event)
+
+        content_events = [e for e in events if e.type == StreamEventType.CONTENT]
+        assert [event.content for event in content_events] == ["make a visualization"]
+
+    @pytest.mark.asyncio
     async def test_unknown_capability_yields_error(self) -> None:
         orch = _make_orchestrator({})
 

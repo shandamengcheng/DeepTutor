@@ -260,7 +260,7 @@ def test_refresh_transcript_returns_refreshed_material(client: TestClient, monke
         assert material_id == material["material_id"]
         return {**material, "transcript": {"status": "ready", "cues": []}}
 
-    monkeypatch.setattr(video_learning, "refresh_invidious_transcript", refresh)
+    monkeypatch.setattr(video_learning, "refresh_transcript", refresh)
     response = client.post(
         f"/api/video-learning/materials/{material['material_id']}/transcript/refresh"
     )
@@ -273,6 +273,50 @@ def test_refresh_transcript_returns_404_for_unknown_material(client: TestClient)
     response = client.post("/api/video-learning/materials/0123456789abcdef/transcript/refresh")
 
     assert response.status_code == 404
+
+
+def test_translate_video_cue_uses_the_stored_caption_not_browser_text(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    material = _material()
+    service.get_timed_media_store().save(material)
+    seen: dict[str, object] = {}
+
+    async def translate(**kwargs):
+        seen.update(kwargs)
+        return {"translation": "已验证的译文", "alternatives": ["备选"], "note": ""}
+
+    monkeypatch.setattr(video_learning, "_translate_verified_cue", translate)
+    material_id = str(material["material_id"])
+    response = client.post(
+        f"/api/video-learning/materials/{material_id}/transcript/translate",
+        json={"cue_index": 0, "target_language": "zh", "text": "forged browser text"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "cue_index": 0,
+        "target_language": "zh",
+        "translation": "已验证的译文",
+        "alternatives": ["备选"],
+        "note": "",
+    }
+    assert seen["target_language"] == "zh"
+    assert seen["selection"] == "one\n<script>two</script>"
+    assert seen["cue_index"] == 0
+    assert "forged browser text" not in str(seen["visible_text"])
+
+
+def test_translate_video_cue_rejects_unknown_cue(client: TestClient) -> None:
+    material = _material()
+    service.get_timed_media_store().save(material)
+
+    response = client.post(
+        f"/api/video-learning/materials/{material['material_id']}/transcript/translate",
+        json={"cue_index": 2, "target_language": "zh"},
+    )
+
+    assert response.status_code == 400
 
 
 def test_subtitles_are_valid_vtt_and_escape_markup(client: TestClient) -> None:

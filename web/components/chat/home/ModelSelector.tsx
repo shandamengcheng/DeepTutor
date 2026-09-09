@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { agentGlyph } from "@/components/agents/agent-icons";
 import { useLingerExpand } from "@/hooks/use-linger-expand";
 import { useOutsideClick } from "@/hooks/use-outside-click";
 import ProviderIcon from "@/components/common/ProviderIcon";
@@ -102,8 +103,66 @@ function ModelOptionRow({
   );
 }
 
+export interface LocalAgentModelOption {
+  name: string;
+  kind?: string;
+}
+
+function LocalAgentIcon({ kind, size }: { kind?: string; size: number }) {
+  return createElement(agentGlyph(kind) ?? Bot, {
+    size,
+    className: "shrink-0",
+  });
+}
+
+function LocalAgentOptionRow({
+  agent,
+  selected,
+  onSelect,
+}: {
+  agent: LocalAgentModelOption;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      title={agent.name}
+      aria-label={agent.name}
+      onClick={onSelect}
+      className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
+        selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
+      }`}
+    >
+      <span
+        className={
+          selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
+        }
+      >
+        <LocalAgentIcon kind={agent.kind} size={14} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
+        {agent.name}
+      </span>
+      <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
+        {agent.kind || t("Agent")}
+      </span>
+      {selected && (
+        <Check
+          size={14}
+          strokeWidth={2}
+          className="shrink-0 text-[var(--primary)]"
+        />
+      )}
+    </button>
+  );
+}
+
 export default function ModelSelector({
   options,
+  localAgents = [],
+  selectedLocalAgent = null,
   activeDefault,
   value,
   loading,
@@ -114,9 +173,13 @@ export default function ModelSelector({
   helperText,
   placement = "top",
   onChange,
+  onLocalAgentChange,
   onRefresh,
 }: {
   options: LLMOption[];
+  /** Local CLI Agents are first-class model execution targets. */
+  localAgents?: LocalAgentModelOption[];
+  selectedLocalAgent?: string | null;
   activeDefault: LLMSelection | null;
   value: LLMSelection | null;
   loading: boolean;
@@ -127,6 +190,7 @@ export default function ModelSelector({
   helperText?: string;
   placement?: "top" | "bottom";
   onChange: (selection: LLMSelection | null) => void;
+  onLocalAgentChange?: (name: string | null) => void;
   onRefresh?: () => void;
 }) {
   const { t } = useTranslation();
@@ -134,9 +198,11 @@ export default function ModelSelector({
   const rootRef = useRef<HTMLDivElement>(null);
   const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
 
-  const selectedSelection = allowSystemDefault
-    ? value
-    : (value ?? activeDefault);
+  const selectedSelection = selectedLocalAgent
+    ? null
+    : allowSystemDefault
+      ? value
+      : (value ?? activeDefault);
   const selectedKey = llmSelectionKey(selectedSelection);
   const selectedOption = useMemo(
     () =>
@@ -144,6 +210,52 @@ export default function ModelSelector({
       null,
     [options, selectedSelection],
   );
+  const selectedAgentOption = useMemo(
+    () =>
+      localAgents.find((agent) => agent.name === selectedLocalAgent) ?? null,
+    [localAgents, selectedLocalAgent],
+  );
+  const defaultTargetAppliedRef = useRef(false);
+
+  // The dropdown order is the default order: local Agents first, followed by
+  // configured LLMs. Apply that default only when the caller has no saved or
+  // active selection; keeping the guard in the shared selector covers every
+  // composer surface, including a local-Agent-only setup where LLM discovery
+  // failed.
+  useEffect(() => {
+    if (
+      defaultTargetAppliedRef.current ||
+      selectedAgentOption ||
+      selectedOption
+    ) {
+      return;
+    }
+
+    const firstAgent = localAgents[0];
+    if (firstAgent) {
+      defaultTargetAppliedRef.current = true;
+      onChange(null);
+      onLocalAgentChange?.(firstAgent.name);
+      return;
+    }
+
+    const firstModel = options[0];
+    if (firstModel) {
+      defaultTargetAppliedRef.current = true;
+      onLocalAgentChange?.(null);
+      onChange({
+        profile_id: firstModel.profile_id,
+        model_id: firstModel.model_id,
+      });
+    }
+  }, [
+    localAgents,
+    onChange,
+    onLocalAgentChange,
+    options,
+    selectedAgentOption,
+    selectedOption,
+  ]);
 
   useOutsideClick(rootRef, open, () => {
     setOpen(false);
@@ -153,13 +265,20 @@ export default function ModelSelector({
   const defaultLabel = systemDefaultLabel || t("System default");
   const defaultDetail =
     systemDefaultDetail || t("Use the active default model from Settings");
-  const canRefresh = error && Boolean(onRefresh);
+  const modelErrorOnly = error && localAgents.length === 0;
+  const canRefresh = modelErrorOnly && Boolean(onRefresh);
   const disabled =
-    loading ||
-    (!canRefresh && (error || (options.length === 0 && !allowSystemDefault)));
-  const label = loading
-    ? t("Loading models")
-    : error
+    (loading && localAgents.length === 0) ||
+    (!canRefresh &&
+      (modelErrorOnly ||
+        (options.length === 0 &&
+          localAgents.length === 0 &&
+          !allowSystemDefault)));
+  const label = selectedAgentOption
+    ? selectedAgentOption.name
+    : loading
+      ? t("Loading models")
+      : modelErrorOnly
       ? canRefresh
         ? t("Refresh models")
         : t("Models unavailable")
@@ -201,8 +320,10 @@ export default function ModelSelector({
               : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
         }`}
       >
-        {error ? (
+        {modelErrorOnly ? (
           <AlertCircle size={16} strokeWidth={1.7} className="shrink-0" />
+        ) : selectedAgentOption ? (
+          <LocalAgentIcon kind={selectedAgentOption.kind} size={16} />
         ) : (
           <ProviderIcon provider={selectedOption?.provider} size={16} />
         )}
@@ -236,6 +357,7 @@ export default function ModelSelector({
                 type="button"
                 title={defaultDetail}
                 onClick={() => {
+                  onLocalAgentChange?.(null);
                   onChange(null);
                   setOpen(false);
                   linger();
@@ -267,6 +389,28 @@ export default function ModelSelector({
                 )}
               </button>
             )}
+            {localAgents.length > 0 ? (
+              <div className="border-b border-[var(--border)]/50 pb-1">
+                <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]">
+                  {t("Agent")}
+                </div>
+                {localAgents.map((agent) => (
+                  <LocalAgentOptionRow
+                    key={`agent:${agent.name}`}
+                    agent={agent}
+                    selected={selectedLocalAgent === agent.name}
+                    onSelect={() => {
+                      onChange(null);
+                      onLocalAgentChange?.(
+                        selectedLocalAgent === agent.name ? null : agent.name,
+                      );
+                      setOpen(false);
+                      linger();
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
             {options.map((option) => {
               const optionSelection = {
                 profile_id: option.profile_id,
@@ -279,6 +423,7 @@ export default function ModelSelector({
                   option={option}
                   selected={optionKey === selectedKey}
                   onSelect={() => {
+                    onLocalAgentChange?.(null);
                     onChange(optionSelection);
                     setOpen(false);
                     linger();

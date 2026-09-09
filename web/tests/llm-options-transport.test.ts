@@ -20,10 +20,13 @@ test("a timed-out model catalog request can be retried", async () => {
         });
       });
     }
-    return new Response(JSON.stringify({ active: null, options: [] }), {
+    return new Response(
+      JSON.stringify({ active: null, options: [], has_configured_llm: false }),
+      {
       status: 200,
       headers: { "Content-Type": "application/json" },
-    });
+      },
+    );
   };
 
   try {
@@ -33,7 +36,11 @@ test("a timed-out model catalog request can be retried", async () => {
         error instanceof DOMException && error.name === "AbortError",
     );
     const result = await listLLMOptions({ force: true, timeoutMs: 50 });
-    assert.deepEqual(result, { active: null, options: [] });
+    assert.deepEqual(result, {
+      active: null,
+      options: [],
+      has_configured_llm: false,
+    });
     assert.equal(calls, 2);
   } finally {
     invalidateLLMOptionsCache();

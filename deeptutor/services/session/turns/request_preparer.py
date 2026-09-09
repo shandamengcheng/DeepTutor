@@ -313,10 +313,9 @@ class TurnRequestPreparer:
             except PermissionError as exc:
                 raise RuntimeError(str(exc)) from exc
         else:
-            # Non-admin users MUST end up with a concrete llm_selection so we
-            # never silently fall through to the global LLM client (which is
-            # configured from admin runtime settings). Admin keeps the existing behavior
-            # (None llm_selection → default config from admin scope).
+            # Every normal turn pins a concrete default. This avoids a hidden
+            # fallback to whichever global provider happened to be active when
+            # callers did not send an explicit model selection.
             from deeptutor.multi_user.context import get_current_user
             from deeptutor.multi_user.model_access import (
                 has_capability_access,
@@ -342,6 +341,14 @@ class TurnRequestPreparer:
                     "profile_id": assigned_llms[0].get("profile_id"),
                     "model_id": assigned_llms[0].get("model_id"),
                 }
+            else:
+                from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
+                from deeptutor.services.config import get_model_catalog_service
+                from deeptutor.services.model_selection import default_llm_selection
+
+                llm_selection = default_llm_selection(
+                    merge_personal_llm_profiles(get_model_catalog_service().load())
+                ) or {}
         if llm_selection:
             from deeptutor.multi_user.personal_models import merge_personal_llm_profiles
             from deeptutor.services.config import get_model_catalog_service
@@ -402,6 +409,17 @@ class TurnRequestPreparer:
                         tool for tool in (payload.get("tools") or []) if tool in allowed_by_manifest
                     ],
                 }
+        # A single connected local CLI is a usable model execution target too.
+        # Bind the first available local agent only when the caller has not
+        # explicitly chosen any connected agent; explicit selections always win.
+        from deeptutor.capabilities.subagent.binding import default_local_agent_ref
+
+        default_agent = await default_local_agent_ref(payload.get("knowledge_bases") or [])
+        if default_agent:
+            payload = {
+                **payload,
+                "knowledge_bases": [*(payload.get("knowledge_bases") or []), default_agent],
+            }
         payload = {**payload, "llm_selection": llm_selection}
         lease = None
         if self.coordinator is not None:

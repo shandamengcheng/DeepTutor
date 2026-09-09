@@ -190,6 +190,7 @@ class AgentLoop:
         client: Any,
         enabled_tools: list[str],
         tool_schemas: list[dict[str, Any]] | None,
+        tool_schema_catalog: list[dict[str, Any]] | None = None,
     ) -> None:
         self.pipeline = pipeline
         self.context = context
@@ -200,7 +201,7 @@ class AgentLoop:
         # Keep the schema catalog even if a provider rejects native ``tools``
         # and subsequent calls switch to DSML fallback. The parser still needs
         # the declared parameter types to decode string-marked containers.
-        self._tool_schema_catalog = tool_schemas
+        self._tool_schema_catalog = tool_schema_catalog or tool_schemas
         self._last_request: LLMRequestSnapshot | None = None
         self.source = pipeline.event_source
         self.stage = pipeline.event_stage
@@ -229,7 +230,7 @@ class AgentLoop:
                 context=self.context,
                 enabled_tools=self.enabled_tools,
                 kb_seed=seed_block,
-                include_tool_manifest=bool(self.tool_schemas),
+                include_tool_manifest=bool(self._tool_schema_catalog),
             )
             outcome = await self._run_loop(
                 messages=messages,

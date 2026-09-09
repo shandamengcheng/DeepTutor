@@ -599,7 +599,7 @@ def _patch_packaged_web_placeholders(
         "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__": api_base,
         "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__": auth_enabled,
     }
-    roots = [web_dir / ".next", web_dir / "server.js"]
+    roots = [*web_dir.glob(".next*"), web_dir / "server.js"]
     for root in roots:
         paths = [root] if root.is_file() else root.rglob("*") if root.exists() else []
         for path in paths:

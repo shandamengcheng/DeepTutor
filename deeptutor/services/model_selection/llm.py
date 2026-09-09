@@ -99,6 +99,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
     active_model_id = str(service.get("active_model_id") or "")
 
     options: list[dict[str, Any]] = []
+    has_configured_llm = False
     for profile in service.get("profiles", []) or []:
         if not isinstance(profile, dict):
             continue
@@ -111,6 +112,14 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
         # "VolcEngine Coding Plan", ...) so the UI never shows binding keys.
         provider_spec = find_by_name(provider)
         provider_label = provider_spec.label if provider_spec else provider
+        # Profiles intentionally remain visible while incomplete so Settings
+        # can be fixed in place. The chat selector needs a separate readiness
+        # signal, however: a remote profile without its required key cannot
+        # execute a turn. Local servers and OAuth providers do not use a
+        # stored API key, so they count as configured without one.
+        profile_can_run = bool(str(profile.get("api_key") or "").strip()) or bool(
+            provider_spec and (provider_spec.is_local or provider_spec.is_oauth)
+        )
 
         for model in profile.get("models", []) or []:
             if not isinstance(model, dict):
@@ -119,6 +128,7 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
             model_value = str(model.get("model") or "").strip()
             if not model_id or not model_value:
                 continue
+            has_configured_llm = has_configured_llm or profile_can_run
 
             option: dict[str, Any] = {
                 "profile_id": profile_id,
@@ -152,6 +162,28 @@ def list_llm_options(catalog: dict[str, Any]) -> dict[str, Any]:
         if active_profile_id and active_model_id
         else None,
         "options": options,
+        # This is deliberately a boolean rather than a secret-presence field:
+        # it lets the client choose a local Agent fallback without exposing
+        # which credential (if any) is stored for an individual profile.
+        "has_configured_llm": has_configured_llm,
+    }
+
+
+def default_llm_selection(catalog: dict[str, Any]) -> dict[str, str] | None:
+    """Return the first configured, callable LLM option, if any.
+
+    This is deliberately based on the same filtered option list sent to the
+    UI, so a missing model id or blank model value can never become an implicit
+    runtime choice.
+    """
+
+    options = list_llm_options(catalog).get("options") or []
+    if not options:
+        return None
+    first = options[0]
+    return {
+        "profile_id": str(first["profile_id"]),
+        "model_id": str(first["model_id"]),
     }
 
 
@@ -183,5 +215,6 @@ __all__ = [
     "LLMSelection",
     "VALID_REASONING_EFFORTS",
     "apply_llm_selection_to_catalog",
+    "default_llm_selection",
     "list_llm_options",
 ]

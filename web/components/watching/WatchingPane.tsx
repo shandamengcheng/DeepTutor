@@ -8,8 +8,11 @@ import {
   ChevronsDown,
   Check,
   Captions,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   ExternalLink,
+  Languages,
   Loader2,
   Pencil,
   Play,
@@ -34,7 +37,9 @@ import {
   exportVideoNotes,
   listVideoNotes,
   saveVideoProgress,
+  translateVideoCue,
   updateVideoNote,
+  type VideoCueTranslation,
   type VideoNote,
 } from '@/lib/video-learning-api'
 import { stepTranscriptMatch, transcriptMatchIndexes } from '@/lib/transcript-search'
@@ -64,6 +69,11 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
   const [input, setInput] = useState('')
   const [playerError, setPlayerError] = useState<string | null>(null)
   const [tab, setTab] = useState<WatchTab>('transcript')
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [translationTarget, setTranslationTarget] = useState<'zh' | 'en'>('zh')
+  const [translations, setTranslations] = useState<Record<string, VideoCueTranslation>>({})
+  const [translationBusyKey, setTranslationBusyKey] = useState<string | null>(null)
+  const [translationErrors, setTranslationErrors] = useState<Record<string, string>>({})
   const [time, setTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [notes, setNotes] = useState<VideoNote[]>([])
@@ -147,6 +157,8 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     () => material?.transcript.cues.find(row => time >= row.start && time <= row.end),
     [material, time]
   )
+  const cueIndex = material?.transcript.cues.findIndex(row => row === cue) ?? -1
+  const translationKey = (index: number) => `${index}:${translationTarget}`
   const normalizedTranscriptQuery = transcriptQuery.trim()
   const transcriptMatches = useMemo(
     () => transcriptMatchIndexes(material?.transcript.cues ?? [], normalizedTranscriptQuery),
@@ -157,6 +169,12 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
     setFollowTranscript(true)
     setTranscriptQuery('')
     setSelectedTranscriptMatch(-1)
+  }, [materialId])
+
+  useEffect(() => {
+    setTranslations({})
+    setTranslationErrors({})
+    setTranslationBusyKey(null)
   }, [materialId])
 
   useEffect(() => {
@@ -207,6 +225,27 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
         detail: { timeSeconds: time, text: cue.text },
       })
     )
+  }
+
+  const translateCue = async (index: number) => {
+    if (!material || index < 0 || translationBusyKey) return
+    const requestedMaterialId = material.material_id
+    const key = translationKey(index)
+    setTranslationBusyKey(key)
+    setTranslationErrors(current => ({ ...current, [key]: '' }))
+    try {
+      const result = await translateVideoCue(requestedMaterialId, index, translationTarget)
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setTranslations(current => ({ ...current, [key]: result }))
+    } catch (caught) {
+      if (activeMaterialIdRef.current !== requestedMaterialId) return
+      setTranslationErrors(current => ({
+        ...current,
+        [key]: caught instanceof Error ? caught.message : t('Translation could not be generated.'),
+      }))
+    } finally {
+      if (activeMaterialIdRef.current === requestedMaterialId) setTranslationBusyKey(null)
+    }
   }
 
   useEffect(() => {
@@ -480,7 +519,10 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
       )}
 
       {material && (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <div
+            className={`flex min-h-0 min-w-0 flex-col ${sidebarCollapsed ? 'flex-1' : 'flex-[3]'}`}
+          >
           <WatchingPlayer
             key={`${material.material_id}:${material.playback.provider}`}
             playback={material.playback}
@@ -550,6 +592,26 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               })}
             </div>
           </div>
+          </div>
+          <aside
+            className={`border-[var(--border)] bg-[color-mix(in_srgb,var(--muted)_18%,var(--background))] ${
+              sidebarCollapsed
+                ? 'hidden md:flex md:w-12 md:shrink-0 md:border-l'
+                : 'flex min-h-[20rem] min-w-0 flex-col border-t md:min-h-0 md:w-[26rem] md:shrink-0 md:border-l md:border-t-0'
+            }`}
+          >
+            {sidebarCollapsed ? (
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="flex h-full w-full items-start justify-center pt-4 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+                aria-label={t('Expand learning panel')}
+                title={t('Expand learning panel')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            ) : (
+              <>
           <div
             ref={transcriptListRef}
             data-testid="video-transcript-list"
@@ -578,36 +640,47 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               }
             }}
           >
-            <div
-              className="mb-3 grid w-full max-w-56 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
-              role="tablist"
-              aria-label={t('Video learning panels')}
-            >
-              {(['transcript', 'notes'] as const).map(item => (
-                <button
-                  key={item}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === item}
-                  onClick={() => {
-                    setTab(item)
-                    setEditingNoteId(null)
-                  }}
-                  className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === item ? 'bg-[var(--background)] shadow-sm' : 'text-[var(--muted-foreground)]'}`}
-                >
-                  {item === 'transcript' ? (
-                    <>
-                      <Captions className="h-3.5 w-3.5" />
-                      {t('Transcript')}
-                    </>
-                  ) : (
-                    <>
-                      <StickyNote className="h-3.5 w-3.5" />
-                      {t('Video notes')}
-                    </>
-                  )}
-                </button>
-              ))}
+            <div className="mb-3 flex items-center gap-2">
+              <div
+                className="grid min-w-0 flex-1 grid-cols-2 rounded-lg bg-[var(--muted)] p-1"
+                role="tablist"
+                aria-label={t('Video learning panels')}
+              >
+                {(['transcript', 'notes'] as const).map(item => (
+                  <button
+                    key={item}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === item}
+                    onClick={() => {
+                      setTab(item)
+                      setEditingNoteId(null)
+                    }}
+                    className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium ${tab === item ? 'bg-[var(--background)] shadow-sm' : 'text-[var(--muted-foreground)]'}`}
+                  >
+                    {item === 'transcript' ? (
+                      <>
+                        <Captions className="h-3.5 w-3.5" />
+                        {t('Transcript')}
+                      </>
+                    ) : (
+                      <>
+                        <StickyNote className="h-3.5 w-3.5" />
+                        {t('Video notes')}
+                      </>
+                    )}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(true)}
+                className="hidden shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition hover:bg-[var(--muted)] hover:text-[var(--foreground)] md:inline-flex"
+                aria-label={t('Collapse learning panel')}
+                title={t('Collapse learning panel')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
 
             {tab === 'transcript' ? (
@@ -714,6 +787,34 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                       <ChevronsDown className="h-4 w-4" />
                       {t('Follow playback')}
                     </button>
+                    <div
+                      className="grid grid-cols-2 rounded-lg bg-[var(--muted)] p-1 text-xs"
+                      aria-label={t('Translation language')}
+                    >
+                      {(['zh', 'en'] as const).map(language => (
+                        <button
+                          key={language}
+                          type="button"
+                          onClick={() => setTranslationTarget(language)}
+                          className={`rounded-md px-2.5 py-1.5 font-medium ${translationTarget === language ? 'bg-[var(--background)] shadow-sm' : 'text-[var(--muted-foreground)]'}`}
+                        >
+                          {language === 'zh' ? t('Chinese') : t('English')}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void translateCue(cueIndex)}
+                      disabled={cueIndex < 0 || translationBusyKey !== null}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-xs font-medium disabled:opacity-50"
+                    >
+                      {translationBusyKey === translationKey(cueIndex) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Languages className="h-3.5 w-3.5" />
+                      )}
+                      {t('Translate current subtitle')}
+                    </button>
                   </div>
                   {normalizedTranscriptQuery && transcriptMatches.length === 0 ? (
                     <p className="rounded-lg border border-[var(--border)] p-4 text-sm text-[var(--muted-foreground)]">
@@ -734,14 +835,15 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                         const selectedMatch =
                           Boolean(normalizedTranscriptQuery) &&
                           transcriptMatches[selectedTranscriptMatch] === index
+                        const key = translationKey(index)
+                        const translation = translations[key]
+                        const translationError = translationErrors[key]
                         return (
-                          <button
+                          <article
                             key={`${row.start}-${index}`}
-                            type="button"
                             data-active-cue={active ? 'true' : undefined}
                             data-transcript-cue={index}
-                            onClick={() => controllerRef.current?.seek(row.start)}
-                            className={`flex w-full gap-3 rounded-md px-2 py-1.5 text-left text-sm ${
+                            className={`rounded-md px-2 py-1.5 text-sm ${
                               active
                                 ? 'bg-blue-500/15 ring-1 ring-blue-500/30'
                                 : selectedMatch
@@ -749,11 +851,32 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
                                   : 'hover:bg-[var(--muted)]'
                             }`}
                           >
-                            <span className="shrink-0 tabular-nums text-blue-600">
-                              {formatTime(row.start)}
-                            </span>
-                            <span>{row.text}</span>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => controllerRef.current?.seek(row.start)}
+                              className="flex w-full gap-3 text-left"
+                            >
+                              <span className="shrink-0 tabular-nums text-blue-600">
+                                {formatTime(row.start)}
+                              </span>
+                              <span>{row.text}</span>
+                            </button>
+                            {translation?.target_language === translationTarget ? (
+                              <div className="ml-[3.25rem] mt-1.5 border-l-2 border-[var(--primary)]/30 pl-3">
+                                <p className="whitespace-pre-wrap leading-6">{translation.translation}</p>
+                                {translation.note ? (
+                                  <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                                    {translation.note}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {translationError ? (
+                              <p role="alert" className="ml-[3.25rem] mt-1.5 text-xs text-[var(--destructive)]">
+                                {translationError}
+                              </p>
+                            ) : null}
+                          </article>
                         )
                       })}
                     </div>
@@ -912,6 +1035,9 @@ export function WatchingPane({ onClose }: { onClose(): void }) {
               </div>
             )}
           </div>
+              </>
+            )}
+          </aside>
         </div>
       )}
 

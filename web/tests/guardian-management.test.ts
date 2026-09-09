@@ -98,7 +98,7 @@ test("learner and guardian sections follow the resolved account type", () => {
   );
   assert.equal(
     isSettingsCategoryVisible(agents, PENDING_SETTINGS_ACCESS),
-    false,
+    true,
   );
 
   const localAdmin = settingsAccessFromAuthStatus({
@@ -119,7 +119,7 @@ test("learner and guardian sections follow the resolved account type", () => {
   });
   assert.equal(isSettingsCategoryVisible(learner, learnerAccount), true);
   assert.equal(isSettingsCategoryVisible(guardian, learnerAccount), false);
-  assert.equal(isSettingsCategoryVisible(agents, learnerAccount), false);
+  assert.equal(isSettingsCategoryVisible(agents, learnerAccount), true);
 
   const guardianAccount = settingsAccessFromAuthStatus({
     enabled: true,
@@ -129,7 +129,7 @@ test("learner and guardian sections follow the resolved account type", () => {
   });
   assert.equal(isSettingsCategoryVisible(learner, guardianAccount), false);
   assert.equal(isSettingsCategoryVisible(guardian, guardianAccount), true);
-  assert.equal(isSettingsCategoryVisible(agents, guardianAccount), false);
+  assert.equal(isSettingsCategoryVisible(agents, guardianAccount), true);
 });
 
 test("guardian management copy is localized", () => {

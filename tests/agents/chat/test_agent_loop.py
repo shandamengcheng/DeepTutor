@@ -1418,6 +1418,79 @@ async def test_dsml_round_keeps_clean_prose_visible_and_decodes_container_args(
 
 
 @pytest.mark.asyncio
+async def test_selected_local_agent_dsml_still_dispatches_capability_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """A local Agent is the loop's model transport, not a prose-only bypass."""
+    from deeptutor.capabilities.subagent.model_runtime import selected_subagent_scope
+    from deeptutor.services.subagent import sessions as subagent_sessions
+    from deeptutor.services.subagent.types import ConsultResult
+
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": kwargs["questions"]},
+            )
+
+    dsml = (
+        '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="ask_user">'
+        '<｜｜DSML｜｜parameter name="questions" string="true">'
+        '[{"id":"q1","prompt":"Explain it in your own words."}]'
+        "</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke>"
+        "</｜｜DSML｜｜tool_calls>"
+    )
+
+    class _Backend:
+        async def consult(
+            self, question, *, on_event, cwd, session_id, config, images=None, partner_id=None
+        ):
+            return ConsultResult(
+                final_text=dsml,
+                session_id="local-session",
+                success=True,
+            )
+
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb_metadata",
+        lambda ref: (
+            {"name": ref, "type": "subagent", "agent_kind": "codex", "cwd": ""}
+            if ref == "local-agent"
+            else {"name": ref, "type": None}
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.subagent.get_backend", lambda kind: _Backend())
+    monkeypatch.setattr(
+        subagent_sessions,
+        "_path",
+        lambda: tmp_path / "subagent_sessions.json",
+    )
+
+    registry = _PausingRegistry()
+    context = UnifiedContext(
+        session_id="local-mastery",
+        user_message="Continue",
+        knowledge_bases=["local-agent"],
+        enabled_tools=["ask_user"],
+    )
+    with selected_subagent_scope(context):
+        pipeline = AgenticChatPipeline(language="en")
+        assert pipeline._can_use_native_tool_calling() is False
+        pipeline.registry = registry
+        monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+        events = await _run(pipeline, context)
+
+    assert registry.executed[0]["name"] == "ask_user"
+    assert registry.executed[0]["kwargs"]["questions"] == [
+        {"id": "q1", "prompt": "Explain it in your own words."}
+    ]
+    assert _result(events).metadata["completed"] is False
+
+
+@pytest.mark.asyncio
 async def test_dsml_container_schema_survives_native_tool_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,11 +1,10 @@
 """Subagent loop capability — consult the user's live local agent as a delegate.
 
-Active whenever the user's selected knowledge base is a connected subagent
-(resolved by :mod:`deeptutor.capabilities.subagent.binding`). As a
-:class:`KnowledgeCapability` it owns the turn: the chat loop runs exclusively on
-the single ``consult_subagent`` tool (plus the ``ask_user`` floor). The chat
-model decides what to ask, asks the local Claude Code / Codex up to the consult
-budget, watches its streamed run, and then answers the user in its own voice.
+This remains the delegation surface for callers that intentionally consult a
+connected Agent as a tool.  When the selected Agent is already the current
+turn's model transport, this extension stays inactive so it does not replace
+Mastery, Visualize, Research, or the ordinary chat tool surface with a
+recursive ``consult_subagent`` call.
 
 The connection (which backend, working dir), the per-backend config and the
 turn-scoped budget/session state are injected into each tool call server-side;
@@ -36,6 +35,10 @@ class SubagentCapability(KnowledgeCapability):
     owned_tools = SUBAGENT_TOOL_NAMES
 
     def is_active(self, context: UnifiedContext) -> bool:
+        from deeptutor.capabilities.subagent.model_runtime import selected_subagent_is_active
+
+        if selected_subagent_is_active():
+            return False
         return connection_for_turn(context) is not None
 
     def owned_kbs(self, context: UnifiedContext) -> set[str]:

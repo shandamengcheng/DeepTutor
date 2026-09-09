@@ -9,7 +9,11 @@ from urllib.parse import urlparse
 
 from deeptutor.services.imagegen.config import ImagegenConfig
 from deeptutor.services.keypool import primary_api_key
-from deeptutor.services.model_selection import LLMSelection, apply_llm_selection_to_catalog
+from deeptutor.services.model_selection import (
+    LLMSelection,
+    apply_llm_selection_to_catalog,
+    default_llm_selection,
+)
 from deeptutor.services.provider_registry import (
     NANOBOT_LLM_PROVIDERS,
     PROVIDERS,
@@ -818,6 +822,12 @@ def resolve_llm_runtime_config(
     # re-parse it, so a malformed selection would be validated (and rejected)
     # from two places. ``from_payload`` is idempotent on an already-parsed value.
     selection = LLMSelection.from_payload(llm_selection)
+    # A call without a request-level choice must still resolve deterministically
+    # to a concrete model.  Use the first callable catalog option instead of a
+    # stale global active pointer. Task-service profiles keep their independent
+    # selection semantics below.
+    if selection is None and service_name == "llm":
+        selection = LLMSelection.from_payload(default_llm_selection(loaded))
     loaded = apply_llm_selection_to_catalog(loaded, selection)
 
     profile, model = _active_profile_and_model(loaded, catalog_service, service_name)

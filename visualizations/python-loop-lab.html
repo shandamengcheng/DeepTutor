@@ -1,0 +1,259 @@
+<div id="python-loop-lab">
+  <style>
+    #python-loop-lab {
+      color: var(--foreground);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      width: 100%;
+    }
+    #python-loop-lab .lab-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr);
+      gap: 18px;
+      align-items: start;
+    }
+    #python-loop-lab .lab-section { min-width: 0; }
+    #python-loop-lab h2, #python-loop-lab h3 { margin: 0 0 10px; }
+    #python-loop-lab .lab-lead { margin: 0 0 16px; color: var(--muted-foreground); }
+    #python-loop-lab pre {
+      margin: 0;
+      padding: 14px 16px;
+      overflow: auto;
+      color: var(--card-foreground);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    #python-loop-lab .code-line {
+      display: block;
+      padding: 2px 8px;
+      margin: 0 -8px;
+      border-radius: 5px;
+    }
+    #python-loop-lab .code-line.active {
+      background: color-mix(in srgb, var(--viz-series-1) 18%, transparent);
+      color: var(--foreground);
+    }
+    #python-loop-lab .line-no {
+      display: inline-block;
+      width: 24px;
+      color: var(--muted-foreground);
+      user-select: none;
+    }
+    #python-loop-lab .viz-controls { margin: 12px 0; }
+    #python-loop-lab .trace {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 12px 0;
+    }
+    #python-loop-lab .trace .card { min-width: 0; }
+    #python-loop-lab .trace-label { color: var(--muted-foreground); }
+    #python-loop-lab .trace-value { margin-top: 4px; font-size: 1.25em; font-weight: 500; }
+    #python-loop-lab .flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      min-height: 46px;
+      margin: 10px 0 14px;
+    }
+    #python-loop-lab .flow-item {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      min-height: 42px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--muted) 70%, transparent);
+      color: var(--muted-foreground);
+    }
+    #python-loop-lab .flow-item.done {
+      background: color-mix(in srgb, var(--viz-series-2) 18%, transparent);
+      color: var(--foreground);
+    }
+    #python-loop-lab .flow-item.current {
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+    #python-loop-lab .console {
+      min-height: 88px;
+      padding: 12px 14px;
+      background: color-mix(in srgb, var(--muted) 52%, transparent);
+      white-space: pre-wrap;
+    }
+    #python-loop-lab .challenge { margin-top: 18px; }
+    #python-loop-lab .challenge p { margin: 6px 0 10px; }
+    #python-loop-lab .answer-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    #python-loop-lab .answer-row .form-control { flex: 1 1 150px; }
+    #python-loop-lab .feedback { min-height: 24px; margin-top: 8px; }
+    #python-loop-lab .concept {
+      margin-top: 14px;
+    }
+    #python-loop-lab .concept strong { font-weight: 500; }
+    @media (max-width: 640px) {
+      #python-loop-lab .lab-layout { grid-template-columns: 1fr; }
+      #python-loop-lab .trace { grid-template-columns: 1fr; }
+    }
+  </style>
+
+  <h2>Python 循环实验室</h2>
+  <p class="lab-lead">逐行运行代码，观察变量怎样变化。</p>
+
+  <div class="lab-layout">
+    <section class="lab-section" aria-labelledby="code-heading">
+      <h3 id="code-heading">代码</h3>
+      <pre aria-label="Python 示例代码"><code><span class="code-line" data-line="0"><span class="line-no">1</span>numbers = [2, 5, 3]</span><span class="code-line" data-line="1"><span class="line-no">2</span>total = 0</span><span class="code-line" data-line="2"><span class="line-no">3</span>for number in numbers:</span><span class="code-line" data-line="3"><span class="line-no">4</span>    total = total + number</span><span class="code-line" data-line="4"><span class="line-no">5</span>print(total)</span></code></pre>
+
+      <div class="viz-controls" aria-label="运行控制">
+        <button class="btn btn-primary" type="button" id="pylab-next"><i data-lucide="step-forward" aria-hidden="true"></i> 下一步</button>
+        <button class="btn" type="button" id="pylab-run"><i data-lucide="play" aria-hidden="true"></i> 自动运行</button>
+        <button class="btn btn-ghost" type="button" id="pylab-reset"><i data-lucide="rotate-ccw" aria-hidden="true"></i> 重置</button>
+      </div>
+
+      <div class="trace" aria-live="polite">
+        <div class="card">
+          <div class="trace-label">当前元素</div>
+          <div class="trace-value tabular-nums" id="pylab-number">—</div>
+        </div>
+        <div class="card">
+          <div class="trace-label">total</div>
+          <div class="trace-value tabular-nums" id="pylab-total">—</div>
+        </div>
+        <div class="card">
+          <div class="trace-label">执行状态</div>
+          <div class="trace-value" id="pylab-status">未开始</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lab-section" aria-labelledby="process-heading">
+      <h3 id="process-heading">数据流</h3>
+      <div class="flow" id="pylab-flow" aria-label="列表中三个数字的处理进度"></div>
+      <div class="console" aria-live="polite"><strong>输出</strong><br><code id="pylab-output">等待运行…</code></div>
+      <div class="concept" id="pylab-explain" aria-live="polite">
+        <strong>提示：</strong>点击“下一步”，从第一行开始执行。
+      </div>
+
+      <div class="challenge">
+        <h3>预测一下</h3>
+        <p>如果列表改成 <code>[4, 1, 6]</code>，最后会输出什么？</p>
+        <div class="answer-row">
+          <label class="sr-only" for="pylab-answer">预测输出</label>
+          <input class="form-control" id="pylab-answer" inputmode="numeric" placeholder="输入你的答案">
+          <button class="btn" type="button" id="pylab-check">检查答案</button>
+        </div>
+        <div class="feedback" id="pylab-feedback" aria-live="polite"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById('python-loop-lab');
+      const numbers = [2, 5, 3];
+      const steps = [
+        { line: 0, number: '—', total: '—', status: '创建列表', note: '<strong>列表：</strong><code>numbers</code> 保存了 3 个整数。' },
+        { line: 1, number: '—', total: 0, status: '设置初值', note: '<strong>初始化：</strong>先把累计结果 <code>total</code> 设为 0。' },
+        { line: 2, number: 2, total: 0, status: '第 1 轮', active: 0, note: '<strong>取值：</strong><code>number</code> 依次拿到列表中的 2。' },
+        { line: 3, number: 2, total: 2, status: '完成第 1 轮', done: 1, note: '<strong>累加：</strong><code>0 + 2 = 2</code>。' },
+        { line: 2, number: 5, total: 2, status: '第 2 轮', active: 1, done: 1, note: '<strong>取值：</strong><code>number</code> 接着拿到 5。' },
+        { line: 3, number: 5, total: 7, status: '完成第 2 轮', done: 2, note: '<strong>累加：</strong><code>2 + 5 = 7</code>。' },
+        { line: 2, number: 3, total: 7, status: '第 3 轮', active: 2, done: 2, note: '<strong>取值：</strong><code>number</code> 最后拿到 3。' },
+        { line: 3, number: 3, total: 10, status: '完成第 3 轮', done: 3, note: '<strong>累加：</strong><code>7 + 3 = 10</code>。' },
+        { line: 4, number: '—', total: 10, status: '运行完成', done: 3, output: '10', note: '<strong>输出：</strong><code>print(total)</code> 显示最终结果 10。' }
+      ];
+      let cursor = -1;
+      let timer = null;
+      const lines = [...root.querySelectorAll('.code-line')];
+      const numberEl = root.querySelector('#pylab-number');
+      const totalEl = root.querySelector('#pylab-total');
+      const statusEl = root.querySelector('#pylab-status');
+      const outputEl = root.querySelector('#pylab-output');
+      const explainEl = root.querySelector('#pylab-explain');
+      const flowEl = root.querySelector('#pylab-flow');
+      const nextBtn = root.querySelector('#pylab-next');
+      const runBtn = root.querySelector('#pylab-run');
+
+      function drawFlow(done = 0, active = -1) {
+        flowEl.innerHTML = '';
+        numbers.forEach((value, index) => {
+          const item = document.createElement('span');
+          item.className = 'flow-item' + (index < done ? ' done' : '') + (index === active ? ' current' : '');
+          item.textContent = value;
+          item.setAttribute('aria-label', `数字 ${value}${index < done ? '，已累加' : index === active ? '，当前处理' : '，等待处理'}`);
+          flowEl.appendChild(item);
+        });
+      }
+
+      function render() {
+        lines.forEach(line => line.classList.remove('active'));
+        if (cursor < 0) {
+          numberEl.textContent = '—';
+          totalEl.textContent = '—';
+          statusEl.textContent = '未开始';
+          outputEl.textContent = '等待运行…';
+          explainEl.innerHTML = '<strong>提示：</strong>点击“下一步”，从第一行开始执行。';
+          drawFlow();
+          nextBtn.disabled = false;
+          return;
+        }
+        const step = steps[cursor];
+        lines[step.line].classList.add('active');
+        numberEl.textContent = step.number;
+        totalEl.textContent = step.total;
+        statusEl.textContent = step.status;
+        outputEl.textContent = step.output || '尚无输出';
+        explainEl.innerHTML = step.note;
+        drawFlow(step.done || 0, Number.isInteger(step.active) ? step.active : -1);
+        nextBtn.disabled = cursor === steps.length - 1;
+      }
+
+      function next() {
+        if (cursor < steps.length - 1) cursor += 1;
+        render();
+        if (cursor === steps.length - 1 && timer) stopAuto();
+      }
+
+      function stopAuto() {
+        clearInterval(timer);
+        timer = null;
+        runBtn.innerHTML = '<i data-lucide="play" aria-hidden="true"></i> 自动运行';
+        if (window.lucide) lucide.createIcons({ attrs: { width: 16, height: 16 } });
+      }
+
+      nextBtn.addEventListener('click', next);
+      runBtn.addEventListener('click', () => {
+        if (timer) return stopAuto();
+        if (cursor === steps.length - 1) cursor = -1;
+        runBtn.innerHTML = '<i data-lucide="pause" aria-hidden="true"></i> 暂停';
+        if (window.lucide) lucide.createIcons({ attrs: { width: 16, height: 16 } });
+        next();
+        if (cursor < steps.length - 1) timer = setInterval(next, 850);
+      });
+      root.querySelector('#pylab-reset').addEventListener('click', () => {
+        if (timer) stopAuto();
+        cursor = -1;
+        render();
+      });
+      root.querySelector('#pylab-check').addEventListener('click', () => {
+        const input = root.querySelector('#pylab-answer');
+        const feedback = root.querySelector('#pylab-feedback');
+        if (!input.value.trim()) {
+          feedback.className = 'feedback text-destructive';
+          feedback.textContent = '先输入一个答案。';
+        } else if (Number(input.value) === 11) {
+          feedback.className = 'feedback';
+          feedback.textContent = '答对了：4 + 1 + 6 = 11。';
+        } else {
+          feedback.className = 'feedback text-destructive';
+          feedback.textContent = '再试一次：从 total = 0 开始，依次加上三个数。';
+        }
+      });
+      root.querySelector('#pylab-answer').addEventListener('keydown', event => {
+        if (event.key === 'Enter') root.querySelector('#pylab-check').click();
+      });
+      drawFlow();
+    })();
+  </script>
+</div>

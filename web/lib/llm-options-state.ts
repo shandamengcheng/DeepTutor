@@ -6,6 +6,7 @@ export type LLMOptionsStatus = "loading" | "ready" | "error";
 export interface LLMOptionsState {
   options: LLMOption[];
   activeDefault: LLMSelection | null;
+  hasConfiguredLLM: boolean;
   status: LLMOptionsStatus;
 }
 
@@ -17,6 +18,7 @@ export type LLMOptionsAction =
 export const INITIAL_LLM_OPTIONS_STATE: LLMOptionsState = {
   options: [],
   activeDefault: null,
+  hasConfiguredLLM: false,
   status: "loading",
 };
 
@@ -39,6 +41,7 @@ export function reduceLLMOptionsState(
       return {
         options: action.payload.options,
         activeDefault: action.payload.active,
+        hasConfiguredLLM: action.payload.has_configured_llm,
         status: "ready",
       };
     case "refresh-failed":

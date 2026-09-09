@@ -21,6 +21,8 @@ export interface LLMOption extends LLMSelection {
 export interface LLMOptionsResponse {
   active: LLMSelection | null;
   options: LLMOption[];
+  /** Whether at least one configured profile can actually run a turn. */
+  has_configured_llm: boolean;
 }
 
 export function llmSelectionKey(selection: LLMSelection | null | undefined) {
@@ -65,6 +67,7 @@ export async function listLLMOptions(options?: {
         return {
           active: data.active ?? null,
           options: Array.isArray(data.options) ? data.options : [],
+          has_configured_llm: Boolean(data.has_configured_llm),
         };
       } finally {
         clearTimeout(timeout);

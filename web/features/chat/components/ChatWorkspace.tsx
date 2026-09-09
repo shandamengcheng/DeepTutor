@@ -109,6 +109,7 @@ import {
 import { listKnowledgeBases } from "@/features/knowledge/api/catalog";
 import { getSubagentSettings } from "@/lib/subagents-api";
 import { useLLMOptions } from "@/hooks/useLLMOptions";
+import { defaultLocalAgentName } from "@/lib/local-agent-default";
 import {
   getEnabledOptionalTools,
   invalidateEnabledOptionalToolsCache,
@@ -120,6 +121,10 @@ import {
 } from "@/features/capabilities/presentation";
 import { useCapabilityCatalog } from "@/features/capabilities/useCapabilityCatalog";
 import { browserStorage } from "@/shared/storage";
+import {
+  RESEARCH_CONFIG_STORAGE_KEY,
+  useCapabilityConfigPersistence,
+} from "@/features/chat/hooks/useCapabilityConfigPersistence";
 import { downloadChatMarkdown } from "@/lib/chat-export";
 import { buildChatOutline, scrollToChatTurn } from "@/lib/chat-outline";
 import { buildConversationNotebookSave } from "@/lib/conversation-notebook-save";
@@ -312,9 +317,11 @@ export default function ChatWorkspace() {
       .catch(() => setCourses([]));
   }, []);
   const agentPreselectDoneRef = useRef(false);
+  const defaultLocalAgentDoneRef = useRef(false);
   const {
     options: llmOptions,
     activeDefault: activeLLMDefault,
+    hasConfiguredLLM,
     loading: llmOptionsLoading,
     error: llmOptionsError,
     refresh: refreshLLMOptions,
@@ -417,65 +424,25 @@ export default function ChatWorkspace() {
   // adjusted settings. Capability switches also reset this flag.
   const [capabilityConfigConfirmed, setCapabilityConfigConfirmed] =
     useState(false);
-  // Per-session persistence of the capability-config form. The form lives
-  // in local React state, so anything that remounts the page (browser
-  // back/forward to /chat/<id>, URL-driven session swap, etc.) would
-  // otherwise wipe a confirmed-and-already-sent setup back to defaults.
-  // Storing the form by sessionId in localStorage keeps the selections —
-  // and the Confirmed badge — stable for the rest of the session.
+  // Keep the existing per-session snapshot for capability state, while the
+  // Research form itself is shared across sessions as a user preference.
+  // Reading researchConfig from the old snapshot migrates existing choices.
   const capabilityConfigStorageKey = useMemo(() => {
     const sid = state.sessionId || sessionIdParam || "";
     return sid ? `dt:chat:capability-config:${sid}` : null;
   }, [state.sessionId, sessionIdParam]);
-  const lastHydratedConfigKeyRef = useRef<string | null>(null);
-  // Hydrate the form configs on first encounter of each session id, so
-  // the user's prior selections come back when they return to a session.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!capabilityConfigStorageKey) return;
-    if (lastHydratedConfigKeyRef.current === capabilityConfigStorageKey) return;
-    lastHydratedConfigKeyRef.current = capabilityConfigStorageKey;
-    const raw = browserStorage.readRaw("local", capabilityConfigStorageKey);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as {
-        quizConfig?: DeepQuestionFormConfig;
-        visualizeConfig?: VisualizeFormConfig;
-        researchConfig?: DeepResearchFormConfig;
-        capabilityConfigConfirmed?: boolean;
-      };
-      if (parsed.quizConfig) setQuizConfig(parsed.quizConfig);
-      if (parsed.visualizeConfig) setVisualizeConfig(parsed.visualizeConfig);
-      if (parsed.researchConfig) setResearchConfig(parsed.researchConfig);
-      if (typeof parsed.capabilityConfigConfirmed === "boolean") {
-        setCapabilityConfigConfirmed(parsed.capabilityConfigConfirmed);
-      }
-    } catch {
-      /* corrupted entry — ignore */
-    }
-  }, [capabilityConfigStorageKey]);
-  // Persist on every change. Write is synchronous and small, and
-  // localStorage already de-dupes identical writes at the browser level.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!capabilityConfigStorageKey) return;
-    browserStorage.writeRaw(
-      "local",
-      capabilityConfigStorageKey,
-      JSON.stringify({
-        quizConfig,
-        visualizeConfig,
-        researchConfig,
-        capabilityConfigConfirmed,
-      }),
-    );
-  }, [
-    capabilityConfigStorageKey,
+  useCapabilityConfigPersistence({
+    storageKey: capabilityConfigStorageKey,
+    researchStorageKey: RESEARCH_CONFIG_STORAGE_KEY,
     quizConfig,
     visualizeConfig,
     researchConfig,
     capabilityConfigConfirmed,
-  ]);
+    setQuizConfig,
+    setVisualizeConfig,
+    setResearchConfig,
+    setCapabilityConfigConfirmed,
+  });
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showNotebookPicker, setShowNotebookPicker] = useState(false);
   const [showBookPicker, setShowBookPicker] = useState(false);
@@ -2097,6 +2064,34 @@ export default function ChatWorkspace() {
     agentPreselectDoneRef.current = true;
     handleSelectAgent(name);
   }, [agentNameSet, handleSelectAgent]);
+  // A locally connected CLI can run a turn without any configured LLM key.
+  // Mirror the server-side fallback in the selector, but only once so an
+  // intentional manual deselection remains respected.
+  useEffect(() => {
+    if (
+      defaultLocalAgentDoneRef.current ||
+      pendingAgentRef.current ||
+      selectedAgent
+    ) {
+      return;
+    }
+    const name = defaultLocalAgentName({
+      agents: agentOptions,
+      hasConfiguredLLM,
+      llmOptionsLoading,
+      llmOptionsError,
+    });
+    if (!name) return;
+    defaultLocalAgentDoneRef.current = true;
+    handleSelectAgent(name);
+  }, [
+    agentOptions,
+    handleSelectAgent,
+    hasConfiguredLLM,
+    llmOptionsError,
+    llmOptionsLoading,
+    selectedAgent,
+  ]);
   const handleSelectNotebookPicker = useCallback(() => {
     setShowNotebookPicker(true);
   }, []);

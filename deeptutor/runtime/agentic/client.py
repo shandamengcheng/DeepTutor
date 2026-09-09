@@ -237,6 +237,17 @@ def build_openai_client(config: LLMClientConfig) -> Any:
     handle itself owns an HTTP connection pool, so reusing it is both faster
     and prevents a new allocator/socket high-water mark on every turn.
     """
+    # A connected local Agent is a model transport, not a replacement for the
+    # active Capability.  Keep the Capability's normal agent/tool loop and
+    # substitute only its OpenAI-shaped client.
+    from deeptutor.capabilities.subagent.model_runtime import (
+        build_selected_subagent_openai_client,
+    )
+
+    selected_client = build_selected_subagent_openai_client()
+    if selected_client is not None:
+        return selected_client
+
     disable_ssl_verify = bool(load_system_settings()["disable_ssl_verify"])
     try:
         loop = asyncio.get_running_loop()

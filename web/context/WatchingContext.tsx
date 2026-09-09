@@ -15,7 +15,7 @@ import { useTranslation } from "react-i18next";
 
 import {
   getVideoMaterial,
-  refreshInvidiousTranscript,
+  refreshVideoTranscript,
   resolveVideo,
   type TimedMediaMaterial,
   type VideoProvider,
@@ -131,7 +131,7 @@ export function WatchingProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      accept(await refreshInvidiousTranscript(material.material_id));
+      accept(await refreshVideoTranscript(material.material_id));
     } catch (caught) {
       setError(
         caught instanceof Error

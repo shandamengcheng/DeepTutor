@@ -280,6 +280,17 @@ const CHAT_CHILDREN: SettingsLeaf[] = [
 
 const AGENT_CHILDREN: SettingsLeaf[] = [
   {
+    key: "agent-connections",
+    href: "/settings#agent-connections",
+    label: { zh: "连接的智能体", en: "Connected agents" },
+    blurb: {
+      zh: "连接本机或伙伴的智能体，并在对话中直接调用。",
+      en: "Connect a local or partner agent to call directly in chat.",
+    },
+    icon: Bot,
+    tile: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  },
+  {
     key: "agent-claude-code",
     href: "/settings#agent-claude-code",
     label: { zh: "Claude Code", en: "Claude Code" },

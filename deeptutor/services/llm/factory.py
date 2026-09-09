@@ -416,6 +416,16 @@ async def complete(
     allow_image_fallback: bool | None = None,
     **kwargs: Any,
 ) -> str:
+    from deeptutor.capabilities.subagent.model_runtime import complete_with_selected_subagent
+
+    direct_response = await complete_with_selected_subagent(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        messages=messages,
+    )
+    if direct_response is not None:
+        return direct_response
+
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)
@@ -524,6 +534,17 @@ async def stream(
     allow_image_fallback: bool | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[str, None]:
+    from deeptutor.capabilities.subagent.model_runtime import complete_with_selected_subagent
+
+    direct_response = await complete_with_selected_subagent(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        messages=messages,
+    )
+    if direct_response is not None:
+        yield direct_response
+        return
+
     caller_extra_headers = kwargs.pop("extra_headers", None)
     reasoning_effort = kwargs.pop("reasoning_effort", None)
     image_data = kwargs.pop("image_data", None)

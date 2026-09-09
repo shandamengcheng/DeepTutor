@@ -648,6 +648,7 @@ async def test_get_llm_options_returns_redacted_catalog(monkeypatch: pytest.Monk
         "model_id": "llm-model-default",
     }
     assert response["options"][0]["model"] == "gpt-4o-mini"
+    assert response["has_configured_llm"] is True
     assert "api_key" not in response["options"][0]
     assert "base_url" not in response["options"][0]
 

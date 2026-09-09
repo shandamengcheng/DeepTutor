@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
@@ -21,7 +21,7 @@ from deeptutor.video_learning import (
     invidious_account,
     load_video_learning_settings,
     material_with_playback,
-    refresh_invidious_transcript,
+    refresh_transcript,
     resolve_material,
     save_video_learning_settings,
     test_invidious_connection,
@@ -44,6 +44,11 @@ class ResolveRequest(BaseModel):
 class ProgressRequest(BaseModel):
     time_seconds: float = Field(ge=0, le=24 * 60 * 60)
     duration_seconds: float = Field(default=0, ge=0, le=24 * 60 * 60)
+
+
+class TranslateVideoCueRequest(BaseModel):
+    cue_index: int = Field(ge=0, le=100_000)
+    target_language: Literal["zh", "en"]
 
 
 class CreateVideoNoteRequest(BaseModel):
@@ -176,7 +181,65 @@ async def get_video_material(material_id: str) -> dict[str, Any]:
 @router.post("/materials/{material_id}/transcript/refresh")
 async def refresh_video_transcript(material_id: str) -> dict[str, Any]:
     try:
-        return await refresh_invidious_transcript(material_id)
+        return await refresh_transcript(material_id)
+    except Exception as exc:
+        raise _http_error(exc) from exc
+
+
+async def _translate_verified_cue(
+    *, material_id: str, cue_index: int, selection: str, visible_text: str, target_language: str
+) -> dict[str, Any]:
+    """Reuse the reading translator without making video playback depend on it at startup."""
+    from deeptutor.reading.extensions import ReadingContext
+    from deeptutor.reading.translation import TranslationExtension
+
+    result = await TranslationExtension().run_action(
+        f"translate_{target_language}",
+        ReadingContext(
+            material_id=material_id,
+            locator=cue_index + 1,
+            selection=selection,
+            visible_text=visible_text,
+        ),
+    )
+    return {
+        "translation": result.payload["translation"],
+        "alternatives": result.payload["alternatives"],
+        "note": result.payload["note"],
+    }
+
+
+@router.post("/materials/{material_id}/transcript/translate")
+async def translate_video_cue(
+    material_id: str, payload: TranslateVideoCueRequest
+) -> dict[str, Any]:
+    """Translate one server-verified cue, never arbitrary browser text."""
+    try:
+        material = get_timed_media_store().get(material_id)
+        transcript = material.get("transcript")
+        cues = transcript.get("cues") if isinstance(transcript, dict) else None
+        if not isinstance(cues, list) or payload.cue_index >= len(cues):
+            raise TimedMediaError("Transcript cue was not found.")
+        cue = cues[payload.cue_index]
+        if not isinstance(cue, dict) or not str(cue.get("text") or "").strip():
+            raise TimedMediaError("Transcript cue was not found.")
+        visible_text = "\n".join(
+            str(row.get("text") or "").strip()
+            for row in cues
+            if isinstance(row, dict) and str(row.get("text") or "").strip()
+        )[:60_000]
+        translated = await _translate_verified_cue(
+            material_id=material_id,
+            cue_index=payload.cue_index,
+            selection=str(cue["text"]).strip(),
+            visible_text=visible_text,
+            target_language=payload.target_language,
+        )
+        return {
+            "cue_index": payload.cue_index,
+            "target_language": payload.target_language,
+            **translated,
+        }
     except Exception as exc:
         raise _http_error(exc) from exc
 

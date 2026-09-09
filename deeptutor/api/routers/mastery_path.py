@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 from pydantic import ValidationError as PydanticValidationError
 
+from deeptutor.core.context import UnifiedContext
 from deeptutor.learning import policy as learning_policy
 from deeptutor.learning import prompts as learning_prompts
 from deeptutor.learning.models import (
@@ -368,10 +369,37 @@ async def generate_topic_route(body: GenerateTopicDraftRequest):
     from deeptutor.learning.topic_generation import TopicGenerationError, generate_topic_draft
 
     try:
+        sources = _topic_sources(body.sources)
+
+        # The topic wizard is a short HTTP workflow, not a chat turn, so it
+        # bypasses TurnRuntimeManager's normal default-local-agent binding.
+        # Preserve that same one-agent default here before calling the generic
+        # model factory; otherwise a usable local CLI is ignored and the
+        # wizard incorrectly demands a global cloud-model configuration.
+        from deeptutor.capabilities.subagent.binding import default_local_agent_ref
+
+        default_agent = await default_local_agent_ref()
+        if default_agent:
+            from deeptutor.capabilities.subagent.model_runtime import selected_subagent_scope
+
+            context = UnifiedContext(
+                user_message=body.goal,
+                knowledge_bases=[default_agent],
+                metadata={"source": "mastery_topic_draft"},
+            )
+            with selected_subagent_scope(context):
+                return await generate_topic_draft(
+                    name=body.name,
+                    goal=body.goal,
+                    sources=sources,
+                    language=get_response_language(),
+                    must_cover=body.must_cover,
+                )
+
         return await generate_topic_draft(
             name=body.name,
             goal=body.goal,
-            sources=_topic_sources(body.sources),
+            sources=sources,
             language=get_response_language(),
             must_cover=body.must_cover,
         )

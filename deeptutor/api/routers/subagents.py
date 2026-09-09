@@ -165,6 +165,17 @@ async def create_connection(payload: ConnectSubagentRequest):
         from deeptutor.services.subagent import get_backend
 
         backend = get_backend(agent_kind)
+        if backend is not None and getattr(backend, "local_cli", True):
+            detection = next(
+                (item for item in await detect_all() if item.kind == agent_kind),
+                None,
+            )
+            if detection is None or not detection.available:
+                detail = detection.detail if detection is not None else "not detected"
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Local agent {agent_kind!r} is not available: {detail}",
+                )
         raw_cwd = (payload.cwd or "").strip()
         if raw_cwd and backend is not None and getattr(backend, "local_cli", True):
             try:

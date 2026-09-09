@@ -696,6 +696,37 @@ async def refresh_invidious_transcript(material_id: str) -> dict[str, Any]:
     return public_material(saved, provider="invidious")
 
 
+async def refresh_transcript(material_id: str) -> dict[str, Any]:
+    """Refresh captions using the provider that owns the stored playback."""
+    store = get_timed_media_store()
+    material = store.get(material_id)
+    if material.get("provider_cache", {}).get("invidious_formats"):
+        return await refresh_invidious_transcript(material_id)
+
+    source = material.get("source") if isinstance(material.get("source"), dict) else {}
+    video_id = str(source.get("video_id") or "")
+    if not VIDEO_ID_RE.fullmatch(video_id):
+        raise TimedMediaNotFound("Timed media material was not found.")
+    transcript = material.get("transcript") if isinstance(material.get("transcript"), dict) else {}
+    language = str(transcript.get("language") or "")
+    cues, transcript_language, transcript_source = await _youtube_transcript(video_id, language)
+    if not cues:
+        raise TimedMediaError("YouTube transcript is unavailable.")
+
+    with store.lock(material_id):
+        latest = store.get(material_id)
+        latest["transcript"] = {
+            "status": "ready",
+            "reason": "",
+            "language": transcript_language,
+            "source": transcript_source,
+            "cues": cues,
+        }
+        latest["segments"] = build_segments(cues)
+        saved = store.save(latest)
+    return public_material(saved, provider="youtube")
+
+
 def public_material(material: dict[str, Any], *, provider: str) -> dict[str, Any]:
     payload = {key: value for key, value in material.items() if key != "provider_cache"}
     source = payload.get("source") if isinstance(payload.get("source"), dict) else {}

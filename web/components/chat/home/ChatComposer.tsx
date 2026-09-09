@@ -10,6 +10,7 @@ import {
   type RefObject,
 } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import Image from "next/image";
 import {
   ArrowUp,
   BookMarked,
@@ -49,7 +50,6 @@ import ChatSpaceMenu from "@/components/chat/space/ChatSpaceMenu";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import type { SelectedBookReference } from "@/lib/book-references";
 import type { SelectedReadingReference } from "@/lib/reading-references";
-import AgentSelector from "./AgentSelector";
 import ContextBudgetChip, { type ContextBudget } from "./ContextBudgetChip";
 import KnowledgeSelector from "./KnowledgeSelector";
 import ModelSelector from "./ModelSelector";
@@ -187,8 +187,6 @@ export default memo(function ChatComposer({
   connectedAgents = [],
   selectedAgent = null,
   onSelectAgent,
-  subagentBudget = null,
-  onSubagentBudgetChange,
   llmOptions,
   activeLLMDefault,
   llmSelection,
@@ -274,12 +272,12 @@ export default memo(function ChatComposer({
   attachmentError: string | null;
   activeCap: CapabilityDef;
   knowledgeBases: KnowledgeBase[];
-  /** Connected local subagents (Claude Code / Codex) selectable for this turn. */
+  /** Local CLI Agents offered beside configured LLMs as execution targets. */
   connectedAgents?: { name: string; kind?: string }[];
-  /** The connected agent selected for this turn, if any (single-select). */
+  /** The local Agent selected as this turn's model backend, if any. */
   selectedAgent?: string | null;
   onSelectAgent?: (name: string | null) => void;
-  /** Max times DeepTutor may consult the selected agent this turn. */
+  /** @deprecated Retained on the prop contract for older composer callers. */
   subagentBudget?: number | null;
   onSubagentBudgetChange?: (budget: number) => void;
   llmOptions: LLMOption[];
@@ -825,13 +823,12 @@ export default memo(function ChatComposer({
                         aria-label={previewLabel}
                         className="relative block h-16 w-16 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)] transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]/40"
                       >
-                        {/* Native <img> is safe for SVG: scripts inside an
-                            SVG don't execute under <img> context. Next.js
-                            <Image> rejects SVG by default. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <Image
                           src={a.previewUrl}
                           alt={a.filename || t("Attachment preview")}
+                          fill
+                          unoptimized
+                          sizes="64px"
                           className={`h-full w-full ${isSvgFilename(a.filename) ? "object-contain p-1" : "object-cover"}`}
                         />
                       </button>
@@ -1114,15 +1111,6 @@ export default memo(function ChatComposer({
               </div>
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5">
-                {connectedAgents.length > 0 && onSelectAgent ? (
-                  <AgentSelector
-                    agents={connectedAgents}
-                    selected={selectedAgent}
-                    onSelect={onSelectAgent}
-                    budget={subagentBudget}
-                    onBudgetChange={onSubagentBudgetChange}
-                  />
-                ) : null}
                 {knowledgeBases.length > 0 ? (
                   <KnowledgeSelector
                     knowledgeBases={knowledgeBases}
@@ -1140,11 +1128,14 @@ export default memo(function ChatComposer({
                 ) : null}
                 <ModelSelector
                   options={llmOptions}
+                  localAgents={connectedAgents}
+                  selectedLocalAgent={selectedAgent}
                   activeDefault={activeLLMDefault}
                   value={llmSelection}
                   loading={llmOptionsLoading}
                   error={llmOptionsError}
                   onChange={onSelectLLM}
+                  onLocalAgentChange={onSelectAgent}
                   onRefresh={onRefreshLLMOptions}
                 />
                 {contextBudget ? (

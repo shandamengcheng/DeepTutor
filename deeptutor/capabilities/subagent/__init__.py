@@ -9,7 +9,7 @@ consults, then answers the user itself.
 
 from __future__ import annotations
 
-from deeptutor.capabilities.subagent.binding import connection_for_turn
+from deeptutor.capabilities.subagent.binding import connection_for_turn, default_local_agent_ref
 from deeptutor.capabilities.subagent.capability import SubagentCapability
 from deeptutor.capabilities.subagent.tools import (
     SUBAGENT_TOOL_NAMES,
@@ -23,4 +23,5 @@ __all__ = [
     "SUBAGENT_TOOL_NAMES",
     "SUBAGENT_TOOL_TYPES",
     "connection_for_turn",
+    "default_local_agent_ref",
 ]

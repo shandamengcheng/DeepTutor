@@ -56,6 +56,7 @@ from .._turn_runtime_shared import (
 )
 
 if TYPE_CHECKING:
+    from deeptutor.core.context import UnifiedContext
     from deeptutor.runtime.coordination import RuntimeCoordinator
     from deeptutor.services.llm.config import LLMConfig
     from deeptutor.services.session.protocol import SessionStoreProtocol
@@ -132,6 +133,7 @@ class TurnExecutor:
             execution: _TurnExecution,
             session_id: str,
             ui_language: str,
+            context: UnifiedContext,
         ) -> None: ...
 
     async def _run_turn(self, execution: _TurnExecution) -> None:
@@ -167,6 +169,8 @@ class TurnExecutor:
         stream_done_sent = False
         llm_scope_token: Token[LLMConfig | None] | None = None
         reset_active_llm_selection: Callable[[Token[LLMConfig | None] | None], None] | None = None
+        subagent_scope_token = None
+        reset_selected_subagent_scope: Callable[[Any], None] | None = None
         # One queue per turn for ``ask_user`` style pause-resume.
         # Created here (BEFORE the orchestrator runs) so the pipeline can
         # await on the awaitable we publish into ``context.metadata``.
@@ -379,7 +383,36 @@ class TurnExecutor:
                         capability=capability_name or "chat",
                     )
 
-            llm_config, llm_scope_token = activate_llm_selection(payload.get("llm_selection"))
+            # A selected local Agent must not require a configured cloud LLM
+            # before it is allowed to own the turn. Install a small synthetic
+            # config for history budgeting and scope the preliminary context
+            # so an overflow-summary call also reaches that same local Agent.
+            from deeptutor.capabilities.subagent.binding import connection_for_turn
+
+            preliminary_context = UnifiedContext(
+                session_id=session_id,
+                user_message=str(payload.get("content") or ""),
+                knowledge_bases=list(payload.get("knowledge_bases") or []),
+                attachments=attachments,
+            )
+            if connection_for_turn(preliminary_context) is not None:
+                from deeptutor.capabilities.subagent.model_runtime import (
+                    activate_selected_subagent_scope,
+                    reset_selected_subagent_scope,
+                )
+                from deeptutor.services.llm.config import LLMConfig, set_scoped_llm_config
+
+                subagent_scope_token = activate_selected_subagent_scope(preliminary_context)
+                llm_config = LLMConfig(
+                    model="local-agent",
+                    api_key="",
+                    binding="openai",
+                    provider_name="openai",
+                    context_window=128_000,
+                )
+                llm_scope_token = set_scoped_llm_config(llm_config)
+            else:
+                llm_config, llm_scope_token = activate_llm_selection(payload.get("llm_selection"))
             builder = self._create_context_builder()
 
             async def _emit_context_event(event: StreamEvent) -> None:
@@ -1004,6 +1037,7 @@ class TurnExecutor:
                         execution=execution,
                         session_id=session_id,
                         ui_language=str(payload.get("language", "en") or "en"),
+                        context=context,
                     )
                 except Exception:
                     # Not debug: this step is the only thing that names a
@@ -1162,6 +1196,8 @@ class TurnExecutor:
         finally:
             if llm_scope_token is not None and reset_active_llm_selection is not None:
                 reset_active_llm_selection(llm_scope_token)
+            if subagent_scope_token is not None and reset_selected_subagent_scope is not None:
+                reset_selected_subagent_scope(subagent_scope_token)
             # Drop the reply queue first — any in-flight ``submit_user_reply``
             # that finds the queue gone will return ``False`` rather than
             # accumulating on a dead turn.

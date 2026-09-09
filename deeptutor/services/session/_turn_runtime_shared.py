@@ -324,6 +324,11 @@ _TITLE_ERROR_PREFIXES: tuple[str, ...] = (
     "请求失败",
     "调用失败",
 )
+_TITLE_ERROR_MARKERS: tuple[str, ...] = (
+    "incorrect api key",
+    "invalid api key",
+    "no-key",
+)
 
 
 def _looks_like_error_payload(text: str) -> bool:
@@ -341,7 +346,9 @@ def _looks_like_error_payload(text: str) -> bool:
     if candidate[0] in "{[":
         return True
     lowered = candidate.lower()
-    return any(lowered.startswith(prefix) for prefix in _TITLE_ERROR_PREFIXES)
+    return any(lowered.startswith(prefix) for prefix in _TITLE_ERROR_PREFIXES) or any(
+        marker in lowered for marker in _TITLE_ERROR_MARKERS
+    )
 
 
 def _sanitize_session_title(raw: str) -> str:

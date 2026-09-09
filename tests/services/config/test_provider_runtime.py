@@ -544,6 +544,39 @@ def test_llm_selection_overrides_active_model_without_mutating_catalog() -> None
     assert catalog["services"]["llm"]["active_model_id"] == "m-a"
 
 
+def test_llm_runtime_defaults_to_first_callable_catalog_model() -> None:
+    first = {
+        "id": "p-first",
+        "name": "First",
+        "binding": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "api_key": "sk-first",
+        "api_version": "",
+        "extra_headers": {},
+        "models": [{"id": "m-first", "name": "First", "model": "gpt-4o-mini"}],
+    }
+    later = {
+        "id": "p-later",
+        "name": "Later",
+        "binding": "ollama",
+        "base_url": "http://localhost:11434/v1",
+        "api_key": "",
+        "api_version": "",
+        "extra_headers": {},
+        "models": [{"id": "m-later", "name": "Later", "model": "llama3.2"}],
+    }
+    catalog = _build_catalog(llm_profile=first, llm_model=first["models"][0])
+    catalog["services"]["llm"]["profiles"].append(later)
+    catalog["services"]["llm"].update(
+        {"active_profile_id": "p-later", "active_model_id": "m-later"}
+    )
+
+    resolved = resolve_llm_runtime_config(catalog=catalog)
+
+    assert resolved.model == "gpt-4o-mini"
+    assert catalog["services"]["llm"]["active_profile_id"] == "p-later"
+
+
 def test_llm_reasoning_effort_resolves_from_catalog() -> None:
     catalog = _build_catalog(
         llm_profile={

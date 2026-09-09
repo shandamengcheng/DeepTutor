@@ -10,6 +10,7 @@ import type { LLMOptionsResponse } from "../lib/llm-options";
 
 const CATALOG: LLMOptionsResponse = {
   active: { profile_id: "profile-1", model_id: "model-1" },
+  has_configured_llm: true,
   options: [
     {
       profile_id: "profile-1",
@@ -50,6 +51,7 @@ test("failed background model refresh preserves the last usable catalog", () => 
   assert.equal(failed.status, "ready");
   assert.deepEqual(failed.options, CATALOG.options);
   assert.deepEqual(failed.activeDefault, CATALOG.active);
+  assert.equal(failed.hasConfiguredLLM, true);
 });
 
 test("initial model refresh failure surfaces an error", () => {

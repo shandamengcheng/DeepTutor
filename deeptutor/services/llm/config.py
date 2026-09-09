@@ -244,6 +244,19 @@ def get_llm_config() -> LLMConfig:
     if scoped is not None:
         return scoped
 
+    # A selected local Agent needs no cloud model, key, or endpoint.  Some
+    # capability pipelines read configuration before constructing their model
+    # client, so provide a harmless virtual config for that transport.
+    from deeptutor.capabilities.subagent.model_runtime import selected_subagent_is_active
+
+    if selected_subagent_is_active():
+        return LLMConfig(
+            model="local-agent",
+            api_key="",
+            binding="local_agent",
+            provider_name="local_agent",
+        )
+
     if _LLM_CONFIG_CACHE is not None:
         return _LLM_CONFIG_CACHE
 

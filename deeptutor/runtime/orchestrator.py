@@ -132,7 +132,13 @@ class ChatOrchestrator:
         async def _run() -> None:
             status = "completed"
             try:
-                await capability.run(context, bus)
+                from deeptutor.capabilities.subagent.model_runtime import selected_subagent_scope
+
+                # Keep the same selection available to every nested
+                # model call while preserving the selected Capability's own
+                # stages, tools, persistence and result envelope.
+                with selected_subagent_scope(context):
+                    await capability.run(context, bus)
             except Exception as exc:
                 status = "failed"
                 logger.error("Capability %s failed: %s", cap_name, exc, exc_info=True)

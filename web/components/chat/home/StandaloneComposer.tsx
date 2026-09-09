@@ -47,6 +47,7 @@ import {
   type KnowledgeBaseSummary,
 } from "@/features/knowledge/api/catalog";
 import { listLLMOptions, type LLMOption } from "@/lib/llm-options";
+import { defaultLocalAgentName } from "@/lib/local-agent-default";
 import type { SelectedRecord } from "@/lib/notebook-selection-types";
 import type { SpaceMemoryFile } from "@/lib/space-items";
 import { getSubagentSettings } from "@/lib/subagents-api";
@@ -295,6 +296,7 @@ function StandaloneComposerImpl({
   const llmSelection = controlledLLMSelection ?? ownLLMSelection;
   const [llmOptionsLoading, setLLMOptionsLoading] = useState(true);
   const [llmOptionsError, setLLMOptionsError] = useState(false);
+  const [hasConfiguredLLM, setHasConfiguredLLM] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,10 +314,9 @@ function StandaloneComposerImpl({
     };
   }, []);
 
-  // Connected subagents arrive as `type: subagent` knowledge bases and travel
-  // the same request path, but they are a different question — "who else
-  // should DeepTutor ask" rather than "what should it read" — so they get
-  // their own chip and never appear in the knowledge picker.
+  // Local Agents still use the legacy `type: subagent` persistence record,
+  // but product semantics treat them as model execution targets. They are
+  // shown in ModelSelector and never appear in the knowledge picker.
   const agentNameSet = useMemo(
     () =>
       new Set(
@@ -339,6 +340,7 @@ function StandaloneComposerImpl({
         })),
     [knowledgeBases],
   );
+  const defaultLocalAgentDoneRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -349,12 +351,14 @@ function StandaloneComposerImpl({
         if (cancelled) return;
         setLLMOptions(payload.options);
         setActiveLLMDefault(payload.active);
+        setHasConfiguredLLM(payload.has_configured_llm);
         setLLMOptionsError(false);
       } catch {
         if (cancelled) return;
         setLLMOptionsError(true);
         setLLMOptions([]);
         setActiveLLMDefault(null);
+        setHasConfiguredLLM(false);
       } finally {
         if (!cancelled) setLLMOptionsLoading(false);
       }
@@ -545,9 +549,9 @@ function StandaloneComposerImpl({
     [applyKnowledgeBases, knowledgeBases, selectedKnowledgeBases],
   );
 
-  // The selected agent lives *in* `selectedKnowledgeBases` — one list reaches
-  // the backend, and an agent is a member of it — so there is no second piece
-  // of state to keep in step. What the pickers see is the split view of it.
+  // Keep the existing wire/storage representation while the runtime treats
+  // this selection as a model backend. The split below is compatibility only:
+  // users see one mutually-exclusive execution-target selector.
   const selectedAgent = useMemo(
     () => selectedKnowledgeBases.find((name) => agentNameSet.has(name)) ?? null,
     [agentNameSet, selectedKnowledgeBases],
@@ -566,6 +570,28 @@ function StandaloneComposerImpl({
     },
     [agentNameSet, applyKnowledgeBases, selectedKnowledgeBases],
   );
+
+  // Standalone composer surfaces share the chat default: a sole local CLI is
+  // selected once when the configured LLM catalog is empty.
+  useEffect(() => {
+    if (defaultLocalAgentDoneRef.current || selectedAgent) return;
+    const name = defaultLocalAgentName({
+      agents: agentOptions,
+      hasConfiguredLLM,
+      llmOptionsLoading,
+      llmOptionsError,
+    });
+    if (!name) return;
+    defaultLocalAgentDoneRef.current = true;
+    handleSelectAgent(name);
+  }, [
+    agentOptions,
+    handleSelectAgent,
+    hasConfiguredLLM,
+    llmOptionsError,
+    llmOptionsLoading,
+    selectedAgent,
+  ]);
   // Seeded from the configured default; the chip's stepper overrides it for
   // the next turn. Null until the setting loads, which is also what "no agent
   // selected" looks like — neither case has a budget to send.

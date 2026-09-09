@@ -174,6 +174,12 @@ const nextConfig = {
 
   // Turbopack configuration (used when running `npm run dev:turbo`)
   turbopack: {
+    // This project lives under a home directory that also contains unrelated
+    // lockfiles. Without an explicit root, Next walks upward to that directory
+    // and scans a much larger workspace before compiling or starting the dev
+    // server. The web app is self-contained, so keep Turbopack's invalidation
+    // and file-watching boundary at this package.
+    root: __dirname,
     resolveAlias: {
       // Fix for mermaid's cytoscape dependency - use CJS version
       cytoscape: "cytoscape/dist/cytoscape.cjs.js",
