@@ -1,6 +1,8 @@
-"use client";
+'use client'
 
-import { browserStorage } from "@/shared/storage";
+import TaskPanelSection from '@/components/tasks/TaskPanelSection'
+
+import { browserStorage } from '@/shared/storage'
 
 /**
  * SessionViewerPanel — full right-side sidebar with browser-style tabs that
@@ -25,12 +27,13 @@ import {
   useRef,
   useState,
   type ReactNode,
-} from "react";
-import dynamic from "next/dynamic";
+} from 'react'
+import dynamic from 'next/dynamic'
 import {
   Activity,
   AlertCircle,
   ArrowRight,
+  ChevronRight,
   Compass,
   Download,
   ExternalLink,
@@ -41,105 +44,89 @@ import {
   MessageSquarePlus,
   NotebookPen,
   Paperclip,
+  Plus,
   X,
-} from "lucide-react";
-import { useTranslation } from "react-i18next";
+} from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   previewKindFor,
   resolveSourceUrl,
   type FilePreviewSource,
-} from "@/components/chat/preview/previewerFor";
+} from '@/components/chat/preview/previewerFor'
 import {
+  ACTIVITY_LABEL,
+  ACTIVITY_ROW_HOVER,
+  ACTIVITY_TILE,
   ActivityBody,
   type SessionActivity,
-} from "@/components/chat/home/SessionActivityPanel";
-import QuizFollowupTabBody from "@/components/quiz/QuizFollowupTabBody";
-import SubagentTabBody from "@/components/chat/home/SubagentTabBody";
-import type { QuizFollowupTabContext } from "@/context/QuizFollowupContext";
-import type { GeogebraTabPayload } from "@/context/GeogebraTabContext";
-import { apiUrl } from "@/lib/api";
-import {
-  listAllSessions,
-  type SessionSummary,
-} from "@/lib/session-api";
-import type { MessageAttachment } from "@/features/chat/ChatStateAdapter";
-import type { StreamEvent } from "@/features/chat/model/protocol";
+} from '@/components/chat/home/SessionActivityPanel'
+import QuizFollowupTabBody from '@/components/quiz/QuizFollowupTabBody'
+import ConsultationTabBody from '@/components/chat/home/ConsultationTabBody'
+import type { QuizFollowupTabContext } from '@/context/QuizFollowupContext'
+import type { GeogebraTabPayload } from '@/context/GeogebraTabContext'
+import { apiUrl } from '@/lib/api'
+import { listAllSessions, type SessionSummary } from '@/lib/session-api'
+import type { MessageAttachment } from '@/features/chat/ChatStateAdapter'
+import type { StreamEvent } from '@/features/chat/model/protocol'
+import Tooltip from '@/shared/ui/Tooltip'
 import {
   normalizeSelectedText,
   selectionTutorKey,
   type SelectionTutorContext,
-} from "@/lib/selection-tutor";
+} from '@/lib/selection-tutor'
 
-const PdfPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/PdfPreview"),
-);
-const ImagePreview = dynamic(
-  () => import("@/components/chat/preview/previewers/ImagePreview"),
-);
-const VideoPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/VideoPreview"),
-);
-const SvgPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/SvgPreview"),
-);
+const PdfPreview = dynamic(() => import('@/components/chat/preview/previewers/PdfPreview'))
+const ImagePreview = dynamic(() => import('@/components/chat/preview/previewers/ImagePreview'))
+const VideoPreview = dynamic(() => import('@/components/chat/preview/previewers/VideoPreview'))
+const SvgPreview = dynamic(() => import('@/components/chat/preview/previewers/SvgPreview'))
 const MarkdownPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/MarkdownPreview"),
-);
-const TextPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/TextPreview"),
-);
-const DocxPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/DocxPreview"),
-);
-const XlsxPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/XlsxPreview"),
-);
+  () => import('@/components/chat/preview/previewers/MarkdownPreview')
+)
+const TextPreview = dynamic(() => import('@/components/chat/preview/previewers/TextPreview'))
+const DocxPreview = dynamic(() => import('@/components/chat/preview/previewers/DocxPreview'))
+const XlsxPreview = dynamic(() => import('@/components/chat/preview/previewers/XlsxPreview'))
+const OfficePdfPreview = dynamic(
+  () => import('@/components/chat/preview/previewers/OfficePdfPreview')
+)
 const OfficeTextPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/OfficeTextPreview"),
-);
+  () => import('@/components/chat/preview/previewers/OfficeTextPreview')
+)
 const FallbackPreview = dynamic(
-  () => import("@/components/chat/preview/previewers/FallbackPreview"),
-);
+  () => import('@/components/chat/preview/previewers/FallbackPreview')
+)
 const ChatMarkdownNoteTabBody = dynamic(
-  () => import("@/components/chat/home/ChatMarkdownNoteTab"),
-  { ssr: false },
-);
-const Geogebra = dynamic(() => import("@/components/Geogebra"), {
+  () => import('@/components/chat/home/ChatMarkdownNoteTab'),
+  { ssr: false }
+)
+const Geogebra = dynamic(() => import('@/components/Geogebra'), {
   ssr: false,
-});
-
-const ANIM_MS = 220;
+})
 
 /* Resizable width — the panel overlays from the right and the chat shell
    reserves space for it via the ``--viewer-width`` CSS var (see globals.css).
    Both read the same var so the squeeze and the panel edge stay locked
    together while dragging. */
-const VIEWER_WIDTH_VAR = "--viewer-width";
-const VIEWER_WIDTH_KEY = "dt:viewer-width";
-const VIEWER_WIDTH_DEFAULT = 620;
-const VIEWER_WIDTH_MIN = 400;
-const VIEWER_WIDTH_MAX = 960;
+const VIEWER_WIDTH_VAR = '--viewer-width'
+const VIEWER_WIDTH_KEY = 'dt:viewer-width'
+const VIEWER_WIDTH_DEFAULT = 520
+const VIEWER_WIDTH_MIN = 400
+const VIEWER_WIDTH_MAX = 960
 
 function clampViewerWidth(px: number): number {
   // Hard floor/ceiling, plus a soft ceiling that always leaves the chat
   // column ~30% of the viewport so the panel can't swallow the conversation.
   const ceiling =
-    typeof window !== "undefined"
-      ? Math.max(
-          VIEWER_WIDTH_MIN,
-          Math.min(VIEWER_WIDTH_MAX, window.innerWidth * 0.7),
-        )
-      : VIEWER_WIDTH_MAX;
-  return Math.round(Math.max(VIEWER_WIDTH_MIN, Math.min(px, ceiling)));
+    typeof window !== 'undefined'
+      ? Math.max(VIEWER_WIDTH_MIN, Math.min(VIEWER_WIDTH_MAX, window.innerWidth * 0.7))
+      : VIEWER_WIDTH_MAX
+  return Math.round(Math.max(VIEWER_WIDTH_MIN, Math.min(px, ceiling)))
 }
 
 function readStoredViewerWidth(): number {
-  if (typeof window === "undefined") return VIEWER_WIDTH_DEFAULT;
-  const raw = browserStorage.readRaw("local", VIEWER_WIDTH_KEY);
-  const parsed = raw ? Number(raw) : NaN;
-  return Number.isFinite(parsed)
-    ? clampViewerWidth(parsed)
-    : VIEWER_WIDTH_DEFAULT;
+  if (typeof window === 'undefined') return VIEWER_WIDTH_DEFAULT
+  const raw = browserStorage.readRaw('local', VIEWER_WIDTH_KEY)
+  const parsed = raw ? Number(raw) : NaN
+  return Number.isFinite(parsed) ? clampViewerWidth(parsed) : VIEWER_WIDTH_DEFAULT
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,112 +134,113 @@ function readStoredViewerWidth(): number {
 /* ------------------------------------------------------------------ */
 
 type ViewerTab =
-  | { kind: "file"; id: string; label: string; source: FilePreviewSource }
-  | { kind: "web"; id: string; label: string; url: string }
-  | { kind: "markdown-note"; id: string; label: string }
+  | { kind: 'file'; id: string; label: string; source: FilePreviewSource }
+  | { kind: 'web'; id: string; label: string; url: string }
+  | { kind: 'markdown-note'; id: string; label: string }
   | {
-      kind: "quiz-followup";
-      id: string;
-      label: string;
-      context: QuizFollowupTabContext;
+      kind: 'quiz-followup'
+      id: string
+      label: string
+      context: QuizFollowupTabContext
     }
   | {
-      kind: "selection-tutor";
-      id: string;
-      label: string;
-      context: QuizFollowupTabContext;
+      kind: 'selection-tutor'
+      id: string
+      label: string
+      context: QuizFollowupTabContext
     }
   | {
-      kind: "geogebra";
-      id: string;
-      label: string;
-      script: string;
+      kind: 'geogebra'
+      id: string
+      label: string
+      script: string
     }
+  | { kind: 'new'; id: string; label: string }
   | {
-      kind: "subagent";
-      id: string;
-      label: string;
-      callId: string;
-      events: StreamEvent[];
-    };
+      kind: 'subagent'
+      id: string
+      label: string
+      callId: string
+      events: StreamEvent[]
+    }
 
 export interface SessionViewerPanelHandle {
-  openFileTab(a: MessageAttachment): void;
-  openWebTab(url: string): void;
+  openFileTab(a: MessageAttachment): void
+  openWebTab(url: string): void
   /** Opens the session-scoped inline Markdown editor tab. */
-  openMarkdownNoteTab(): void;
+  openMarkdownNoteTab(): void
   /** Opens (or focuses) the follow-up chat tab for a quiz question. */
-  openQuizFollowupTab(context: QuizFollowupTabContext): void;
+  openQuizFollowupTab(context: QuizFollowupTabContext): void
   /** Opens an independent Little Tutor thread grounded in selected chat text. */
-  openSelectionTutorTab(
-    selection: SelectionTutorContext,
-    language: string,
-  ): void;
+  openSelectionTutorTab(selection: SelectionTutorContext, language: string): void
   /** Opens (or focuses) an interactive GeoGebra applet tab. */
-  openGeogebraTab(payload: GeogebraTabPayload): void;
+  openGeogebraTab(payload: GeogebraTabPayload): void
   /** Opens (first time) or live-updates a connected subagent's run tab. */
-  openSubagentTab(callId: string, label: string, events: StreamEvent[]): void;
+  openSubagentTab(callId: string, label: string, events: StreamEvent[], focus?: boolean): void
   /** Opens the panel and switches to the Activity home (where the
    *  capability-config card lives). */
-  focusActivityHome(): void;
+  focusActivityHome(): void
 }
 
-interface SessionViewerPanelProps {
-  open: boolean;
-  sessionId: string | null;
-  onClose: () => void;
-  onAutoOpen: () => void;
+export interface SessionViewerPanelProps {
+  open: boolean
+  sessionId: string | null
+  onClose: () => void
+  onAutoOpen: () => void
   /** Aggregated session activity, shown on the Activity home view. */
-  activity: SessionActivity;
+  activity: SessionActivity
   /** Optional capability-config card appended below the activity sections. */
-  configSection?: ReactNode;
+  configSection?: ReactNode
+  taskDraftIds?: string[]
+  onTaskDraftChange?: (ids: string[]) => void
 }
 
 function fileTabIdFor(a: MessageAttachment, fallback: number): string {
-  return `file:${a.id ?? a.filename ?? `idx-${fallback}`}`;
+  return `file:${a.id ?? a.filename ?? `idx-${fallback}`}`
 }
 
 function webTabIdFor(url: string): string {
-  return `web:${url}`;
+  return `web:${url}`
 }
 
-const markdownNoteTabId = "markdown-note";
+const markdownNoteTabId = 'markdown-note'
+
+/** One launcher tab at a time — a second "+" focuses it instead of piling
+ *  up blank tabs. */
+const newTabId = 'new-tab'
 
 function quizFollowupTabIdFor(questionKey: string): string {
-  return `quiz-followup:${questionKey}`;
+  return `quiz-followup:${questionKey}`
 }
 
 function selectionTutorTabIdFor(questionKey: string): string {
-  return `selection-tutor:${questionKey}`;
+  return `selection-tutor:${questionKey}`
 }
 
 function geogebraTabIdFor(payloadId: string): string {
-  return `geogebra:${payloadId}`;
+  return `geogebra:${payloadId}`
 }
 
 function subagentTabIdFor(callId: string): string {
-  return `subagent:${callId}`;
+  return `subagent:${callId}`
 }
 
-function savedTutorTabContext(
-  session: SessionSummary,
-  language: string,
-): QuizFollowupTabContext {
-  const label = session.title || "Little Tutor";
-  const selectedText = session.title || session.last_message || label;
+function savedTutorTabContext(session: SessionSummary, language: string): QuizFollowupTabContext {
+  const label = session.title || 'Little Tutor'
+  const selectedText = session.title || session.last_message || label
   return {
     questionKey: `saved-selection-tutor:${session.session_id}`,
     question: {
       question_id: session.session_id,
       question: selectedText,
-      question_type: "concept",
-      correct_answer: "",
-      explanation: "",
+      question_type: 'concept',
+      correct_answer: '',
+      explanation: '',
     },
-    userAnswer: "",
+    userAnswer: '',
     isCorrect: null,
     answerImages: [],
-    aiJudgment: "",
+    aiJudgment: '',
     parentQuizSessionId: null,
     notebookEntryId: null,
     followupSessionId: session.session_id,
@@ -263,29 +251,29 @@ function savedTutorTabContext(
       parentSessionId: session.preferences?.parent_session_id ?? null,
       sourceMessageId: null,
       sourceMessageText: selectedText,
-      sourceMessageRole: "assistant",
+      sourceMessageRole: 'assistant',
     },
-  };
+  }
 }
 
 function hostnameFor(url: string): string {
   try {
-    return new URL(url).hostname.replace(/^www\./, "");
+    return new URL(url).hostname.replace(/^www\./, '')
   } catch {
-    return url.slice(0, 32);
+    return url.slice(0, 32)
   }
 }
 
 function attachmentToPreviewSource(a: MessageAttachment): FilePreviewSource {
   return {
-    filename: a.filename || "",
+    filename: a.filename || '',
     mimeType: a.mime_type,
     type: a.type,
     url: a.url,
     base64: a.base64,
     extractedText: a.extracted_text,
     id: a.id,
-  };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -300,17 +288,17 @@ function SessionViewerPanelInner(
     onAutoOpen,
     activity,
     configSection,
+    taskDraftIds,
+    onTaskDraftChange,
   }: SessionViewerPanelProps,
-  ref: React.Ref<SessionViewerPanelHandle>,
+  ref: React.Ref<SessionViewerPanelHandle>
 ) {
-  const { t, i18n } = useTranslation();
-  const [tabs, setTabs] = useState<ViewerTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [tutorSessions, setTutorSessions] = useState<SessionSummary[]>([]);
-  const [tutorSessionsLoading, setTutorSessionsLoading] = useState(false);
-  const [activeTutorSessionId, setActiveTutorSessionId] = useState<
-    string | null
-  >(null);
+  const { t, i18n } = useTranslation()
+  const [tabs, setTabs] = useState<ViewerTab[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [tutorSessions, setTutorSessions] = useState<SessionSummary[]>([])
+  const [tutorSessionsLoading, setTutorSessionsLoading] = useState(false)
+  const [activeTutorSessionId, setActiveTutorSessionId] = useState<string | null>(null)
 
   // Drag-to-resize width. The width is NOT React state — the panel reads it
   // from the ``--viewer-width`` CSS var (so does the chat shell's squeeze),
@@ -318,227 +306,233 @@ function SessionViewerPanelInner(
   // constant string (no SSR/client hydration mismatch) and means a drag
   // re-styles one DOM node per frame instead of re-rendering the whole panel
   // every pointer move — the difference between janky and buttery.
-  const widthRef = useRef(VIEWER_WIDTH_DEFAULT);
+  const widthRef = useRef(VIEWER_WIDTH_DEFAULT)
   useEffect(() => {
     // Restore the persisted width after mount (kept out of the initial render
     // so server and client agree on the fallback width).
-    widthRef.current = readStoredViewerWidth();
-    document.documentElement.style.setProperty(
-      VIEWER_WIDTH_VAR,
-      `${widthRef.current}px`,
-    );
-  }, []);
+    widthRef.current = readStoredViewerWidth()
+    document.documentElement.style.setProperty(VIEWER_WIDTH_VAR, `${widthRef.current}px`)
+  }, [])
 
   const startResize = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    document.documentElement.dataset.viewerResizing = "true";
-    document.body.style.userSelect = "none";
-    document.body.style.cursor = "col-resize";
+    e.preventDefault()
+    document.documentElement.dataset.viewerResizing = 'true'
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'col-resize'
 
-    let rafId = 0;
-    let pendingX = e.clientX;
+    // The panel's right edge sits ``--viewer-inset`` in from the window edge.
+    const inset =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--viewer-inset')) || 0
+    let rafId = 0
+    let pendingX = e.clientX
     const apply = () => {
-      rafId = 0;
-      const w = clampViewerWidth(window.innerWidth - pendingX);
-      widthRef.current = w;
-      document.documentElement.style.setProperty(VIEWER_WIDTH_VAR, `${w}px`);
-    };
+      rafId = 0
+      const w = clampViewerWidth(window.innerWidth - inset - pendingX)
+      widthRef.current = w
+      document.documentElement.style.setProperty(VIEWER_WIDTH_VAR, `${w}px`)
+    }
     const onMove = (ev: PointerEvent) => {
       // Coalesce to one var write per frame — pointermove can fire faster
       // than the display refreshes.
-      pendingX = ev.clientX;
-      if (!rafId) rafId = requestAnimationFrame(apply);
-    };
+      pendingX = ev.clientX
+      if (!rafId) rafId = requestAnimationFrame(apply)
+    }
     const onUp = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      delete document.documentElement.dataset.viewerResizing;
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      browserStorage.writeRaw(
-        "local",
-        VIEWER_WIDTH_KEY,
-        String(widthRef.current),
-      );
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }, []);
+      if (rafId) cancelAnimationFrame(rafId)
+      delete document.documentElement.dataset.viewerResizing
+      document.body.style.userSelect = ''
+      document.body.style.cursor = ''
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      browserStorage.writeRaw('local', VIEWER_WIDTH_KEY, String(widthRef.current))
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [])
 
   // Wipe tabs whenever the session changes — preview/web state belongs to
   // the conversation that triggered it.
-  const [trackedSessionId, setTrackedSessionId] = useState<string | null>(
-    sessionId,
-  );
+  const [trackedSessionId, setTrackedSessionId] = useState<string | null>(sessionId)
   if (trackedSessionId !== sessionId) {
-    setTrackedSessionId(sessionId);
-    setTabs([]);
-    setActiveTabId(null);
-    setTutorSessions([]);
-    setTutorSessionsLoading(false);
-    setActiveTutorSessionId(null);
+    setTrackedSessionId(sessionId)
+    setTabs([])
+    setActiveTabId(null)
+    setTutorSessions([])
+    setTutorSessionsLoading(false)
+    setActiveTutorSessionId(null)
   }
 
   useEffect(() => {
-    if (!open || !sessionId) return;
-    let cancelled = false;
+    if (!open || !sessionId) return
+    let cancelled = false
     void Promise.resolve()
       .then(() => {
-        if (cancelled) return null;
-        setTutorSessionsLoading(true);
-        return listAllSessions();
+        if (cancelled) return null
+        setTutorSessionsLoading(true)
+        return listAllSessions()
       })
-      .then((rows) => {
-        if (cancelled || !rows) return;
+      .then(rows => {
+        if (cancelled || !rows) return
         setTutorSessions(
           rows
             .filter(
-              (session) =>
-                session.preferences?.session_kind === "selection_tutor" &&
-                session.preferences?.parent_session_id === sessionId,
+              session =>
+                session.preferences?.session_kind === 'selection_tutor' &&
+                session.preferences?.parent_session_id === sessionId
             )
-            .sort((a, b) => b.updated_at - a.updated_at),
-        );
+            .sort((a, b) => b.updated_at - a.updated_at)
+        )
       })
       .catch(() => {
-        if (!cancelled) setTutorSessions([]);
+        if (!cancelled) setTutorSessions([])
       })
       .finally(() => {
-        if (!cancelled) setTutorSessionsLoading(false);
-      });
+        if (!cancelled) setTutorSessionsLoading(false)
+      })
     return () => {
-      cancelled = true;
-    };
-  }, [open, sessionId]);
+      cancelled = true
+    }
+  }, [open, sessionId])
 
   const openFileTab = useCallback(
     (a: MessageAttachment) => {
-      setTabs((prev) => {
-        const id = fileTabIdFor(a, prev.length);
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
+      setTabs(prev => {
+        const id = fileTabIdFor(a, prev.length)
+        const existingIdx = prev.findIndex(tab => tab.id === id)
         if (existingIdx >= 0) {
-          setActiveTabId(id);
-          return prev;
+          setActiveTabId(id)
+          return prev
         }
-        const label = a.filename || "Attachment";
+        const label = a.filename || 'Attachment'
         const next: ViewerTab = {
-          kind: "file",
+          kind: 'file',
           id,
           label,
           source: attachmentToPreviewSource(a),
-        };
-        setActiveTabId(id);
-        return [...prev, next];
-      });
-      onAutoOpen();
+        }
+        setActiveTabId(id)
+        return [...prev, next]
+      })
+      onAutoOpen()
     },
-    [onAutoOpen],
-  );
+    [onAutoOpen]
+  )
 
   const openWebTab = useCallback(
     (url: string) => {
-      setTabs((prev) => {
-        const id = webTabIdFor(url);
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
+      setTabs(prev => {
+        const id = webTabIdFor(url)
+        const existingIdx = prev.findIndex(tab => tab.id === id)
         if (existingIdx >= 0) {
-          setActiveTabId(id);
-          return prev;
+          setActiveTabId(id)
+          return prev
         }
         const next: ViewerTab = {
-          kind: "web",
+          kind: 'web',
           id,
           label: hostnameFor(url),
           url,
-        };
-        setActiveTabId(id);
-        return [...prev, next];
-      });
-      onAutoOpen();
+        }
+        setActiveTabId(id)
+        return [...prev, next]
+      })
+      onAutoOpen()
     },
-    [onAutoOpen],
-  );
+    [onAutoOpen]
+  )
+
+  const openNewTab = useCallback(() => {
+    setTabs(prev =>
+      prev.some(tab => tab.id === newTabId)
+        ? prev
+        : [...prev, { kind: 'new', id: newTabId, label: t('New tab') }]
+    )
+    setActiveTabId(newTabId)
+  }, [t])
+
+  /** The launcher tab becomes whatever it opens, browser-style: drop it,
+   *  then open (or focus) the target, which lands where it stood. */
+  const openFromNewTab = useCallback((openTarget: () => void) => {
+    setTabs(prev => prev.filter(tab => tab.id !== newTabId))
+    openTarget()
+  }, [])
 
   const openMarkdownNoteTab = useCallback(() => {
-    setTabs((prev) => {
-      const existingIdx = prev.findIndex((tab) => tab.id === markdownNoteTabId);
+    setTabs(prev => {
+      const existingIdx = prev.findIndex(tab => tab.id === markdownNoteTabId)
       if (existingIdx >= 0) {
-        setActiveTabId(markdownNoteTabId);
-        return prev;
+        setActiveTabId(markdownNoteTabId)
+        return prev
       }
       const next: ViewerTab = {
-        kind: "markdown-note",
+        kind: 'markdown-note',
         id: markdownNoteTabId,
-        label: t("Markdown note"),
-      };
-      setActiveTabId(markdownNoteTabId);
-      return [...prev, next];
-    });
-    onAutoOpen();
-  }, [onAutoOpen, t]);
+        label: t('Markdown note'),
+      }
+      setActiveTabId(markdownNoteTabId)
+      return [...prev, next]
+    })
+    onAutoOpen()
+  }, [onAutoOpen, t])
 
   const openQuizFollowupTab = useCallback(
     (context: QuizFollowupTabContext) => {
-      setTabs((prev) => {
-        const id = quizFollowupTabIdFor(context.questionKey);
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
+      setTabs(prev => {
+        const id = quizFollowupTabIdFor(context.questionKey)
+        const existingIdx = prev.findIndex(tab => tab.id === id)
         // When the tab already exists, refresh its pinned context (answer
         // text, judgment, etc.) since the learner may have updated it
         // since the tab was first opened.
         if (existingIdx >= 0) {
           const refreshed: ViewerTab = {
-            kind: "quiz-followup",
+            kind: 'quiz-followup',
             id,
             label: context.tabLabel,
             context,
-          };
-          const next = [...prev];
-          next[existingIdx] = refreshed;
-          setActiveTabId(id);
-          return next;
+          }
+          const next = [...prev]
+          next[existingIdx] = refreshed
+          setActiveTabId(id)
+          return next
         }
         const next: ViewerTab = {
-          kind: "quiz-followup",
+          kind: 'quiz-followup',
           id,
           label: context.tabLabel,
           context,
-        };
-        setActiveTabId(id);
-        return [...prev, next];
-      });
-      onAutoOpen();
+        }
+        setActiveTabId(id)
+        return [...prev, next]
+      })
+      onAutoOpen()
     },
-    [onAutoOpen],
-  );
+    [onAutoOpen]
+  )
 
   const openSelectionTutorTab = useCallback(
     (selection: SelectionTutorContext, language: string) => {
-      const selectedText = normalizeSelectedText(selection.selectedText);
-      if (!selectedText) return;
-      const questionKey = selectionTutorKey(
-        selectedText,
-        sessionId,
-        selection.sourceMessageId,
-      );
-      const id = selectionTutorTabIdFor(questionKey);
+      const selectedText = normalizeSelectedText(selection.selectedText)
+      if (!selectedText) return
+      const questionKey = selectionTutorKey(selectedText, sessionId, selection.sourceMessageId)
+      const id = selectionTutorTabIdFor(questionKey)
       const context: QuizFollowupTabContext = {
         questionKey,
         question: {
           question_id: questionKey,
           question: selectedText,
-          question_type: "concept",
-          correct_answer: "",
-          explanation: "",
+          question_type: 'concept',
+          correct_answer: '',
+          explanation: '',
         },
-        userAnswer: "",
+        userAnswer: '',
         isCorrect: null,
         answerImages: [],
-        aiJudgment: "",
+        aiJudgment: '',
         parentQuizSessionId: null,
         notebookEntryId: null,
         followupSessionId: null,
         language,
-        tabLabel: t("Little Tutor"),
+        tabLabel: t('Little Tutor'),
         tutorSelection: {
           selectedText,
           parentSessionId: sessionId,
@@ -546,97 +540,97 @@ function SessionViewerPanelInner(
           sourceMessageText: selection.sourceMessageText,
           sourceMessageRole: selection.sourceMessageRole,
         },
-      };
+      }
 
-      setTabs((prev) => {
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
+      setTabs(prev => {
+        const existingIdx = prev.findIndex(tab => tab.id === id)
         const tab: ViewerTab = {
-          kind: "selection-tutor",
+          kind: 'selection-tutor',
           id,
-          label: t("Little Tutor"),
+          label: t('Little Tutor'),
           context,
-        };
-        if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = tab;
-          setActiveTabId(id);
-          return next;
         }
-        setActiveTabId(id);
-        return [...prev, tab];
-      });
-      onAutoOpen();
+        if (existingIdx >= 0) {
+          const next = [...prev]
+          next[existingIdx] = tab
+          setActiveTabId(id)
+          return next
+        }
+        setActiveTabId(id)
+        return [...prev, tab]
+      })
+      onAutoOpen()
     },
-    [onAutoOpen, sessionId, t],
-  );
+    [onAutoOpen, sessionId, t]
+  )
 
   const openGeogebraTab = useCallback(
     (payload: GeogebraTabPayload) => {
-      setTabs((prev) => {
-        const id = geogebraTabIdFor(payload.id);
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
+      setTabs(prev => {
+        const id = geogebraTabIdFor(payload.id)
+        const existingIdx = prev.findIndex(tab => tab.id === id)
         if (existingIdx >= 0) {
           // Refresh the script in case the assistant produced an updated
           // version under the same payload id (e.g. a refined figure).
           const refreshed: ViewerTab = {
-            kind: "geogebra",
+            kind: 'geogebra',
             id,
-            label: payload.title || "GeoGebra",
+            label: payload.title || 'GeoGebra',
             script: payload.script,
-          };
-          const next = [...prev];
-          next[existingIdx] = refreshed;
-          setActiveTabId(id);
-          return next;
+          }
+          const next = [...prev]
+          next[existingIdx] = refreshed
+          setActiveTabId(id)
+          return next
         }
         const next: ViewerTab = {
-          kind: "geogebra",
+          kind: 'geogebra',
           id,
-          label: payload.title || "GeoGebra",
+          label: payload.title || 'GeoGebra',
           script: payload.script,
-        };
-        setActiveTabId(id);
-        return [...prev, next];
-      });
-      onAutoOpen();
+        }
+        setActiveTabId(id)
+        return [...prev, next]
+      })
+      onAutoOpen()
     },
-    [onAutoOpen],
-  );
+    [onAutoOpen]
+  )
 
   // A connected subagent's run streams into its own tab. The first call (when
   // the consult starts) reveals + focuses the tab; later calls only refresh its
   // events, so live streaming never yanks the user off whatever they're viewing.
-  const subagentSeenRef = useRef<Set<string>>(new Set());
+  const subagentSeenRef = useRef<Set<string>>(new Set())
   const openSubagentTab = useCallback(
-    (callId: string, label: string, events: StreamEvent[]) => {
-      const id = subagentTabIdFor(callId);
-      const isNew = !subagentSeenRef.current.has(callId);
-      subagentSeenRef.current.add(callId);
-      setTabs((prev) => {
-        const existingIdx = prev.findIndex((tab) => tab.id === id);
-        const tab: ViewerTab = { kind: "subagent", id, label, callId, events };
+    (callId: string, label: string, events: StreamEvent[], focus = false) => {
+      const id = subagentTabIdFor(callId)
+      const isNew = !subagentSeenRef.current.has(callId)
+      subagentSeenRef.current.add(callId)
+      setTabs(prev => {
+        const existingIdx = prev.findIndex(tab => tab.id === id)
+        const tab: ViewerTab = { kind: 'subagent', id, label, callId, events }
         if (existingIdx >= 0) {
-          const next = [...prev];
-          next[existingIdx] = tab;
-          return next;
+          const next = [...prev]
+          next[existingIdx] = tab
+          return next
         }
-        return [...prev, tab];
-      });
-      if (isNew) {
-        setActiveTabId(id);
-        onAutoOpen();
+        return [...prev, tab]
+      })
+      if (isNew || focus) {
+        setActiveTabId(id)
+        onAutoOpen()
       }
     },
-    [onAutoOpen],
-  );
+    [onAutoOpen]
+  )
 
   // Open the panel and return to the Activity home (where the
   // capability-config card surfaces). Used by the send-gate.
   const focusActivityHome = useCallback(() => {
-    setActiveTabId(null);
-    setActiveTutorSessionId(null);
-    onAutoOpen();
-  }, [onAutoOpen]);
+    setActiveTabId(null)
+    setActiveTutorSessionId(null)
+    onAutoOpen()
+  }, [onAutoOpen])
 
   useImperativeHandle(
     ref,
@@ -659,101 +653,106 @@ function SessionViewerPanelInner(
       openGeogebraTab,
       openSubagentTab,
       focusActivityHome,
-    ],
-  );
+    ]
+  )
 
   const closeTab = useCallback(
     (id: string) => {
-      setTabs((prev) => {
-        const idx = prev.findIndex((tab) => tab.id === id);
-        if (idx === -1) return prev;
-        const next = prev.filter((tab) => tab.id !== id);
+      setTabs(prev => {
+        const idx = prev.findIndex(tab => tab.id === id)
+        if (idx === -1) return prev
+        const next = prev.filter(tab => tab.id !== id)
         if (activeTabId === id) {
           // Fall back to the previous tab, or to the Activity home when none
           // remain — the panel stays open since the home is always useful.
-          setActiveTabId(
-            next.length === 0
-              ? null
-              : (next[Math.max(0, idx - 1)] ?? next[0]).id,
-          );
+          setActiveTabId(next.length === 0 ? null : (next[Math.max(0, idx - 1)] ?? next[0]).id)
         }
-        return next;
-      });
+        return next
+      })
     },
-    [activeTabId],
-  );
+    [activeTabId]
+  )
 
   // ESC closes the panel.
   useEffect(() => {
-    if (!open) return;
+    if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose()
       }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  // The panel is lazy: it usually mounts *because* it was just opened, so its
+  // first render is already open and would pop in with no slide. Hold one
+  // closed frame after mount so the transition has a start state to run from.
+  const [entered, setEntered] = useState(false)
+  useEffect(() => {
+    let inner = 0
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => setEntered(true))
+    })
+    return () => {
+      cancelAnimationFrame(outer)
+      cancelAnimationFrame(inner)
+    }
+  }, [])
 
   // The viewer is visible whenever it's open — even with no tabs. The
   // tabs.length === 0 case renders a "Landing" page where the user can
   // paste a URL or pick a local file to open as the first tab.
-  const visible = open;
-  const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
+  const visible = open && entered
+  const activeTab = tabs.find(tab => tab.id === activeTabId) ?? null
   const activeTutorSession =
-    tutorSessions.find((session) => session.session_id === activeTutorSessionId) ??
-    null;
+    tutorSessions.find(session => session.session_id === activeTutorSessionId) ?? null
 
   const openLocalFile = useCallback(
     (file: File) => {
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(file)
       openFileTab({
-        type: file.type.startsWith("image/") ? "image" : "file",
+        type: file.type.startsWith('image/') ? 'image' : 'file',
         filename: file.name,
         mime_type: file.type,
         url,
-      });
+      })
     },
-    [openFileTab],
-  );
+    [openFileTab]
+  )
 
   /* Below the drawer breakpoint the panel is a full-screen sheet, not a side
      panel: there is no chat column left to sit beside, and VIEWER_WIDTH_MIN is
      wider than the phone it would overlay. That override lives in CSS
      (`max-md:!w-full`) rather than `useDevice()` so it is right on the first
      paint and follows an orientation change for free — the var-driven width
-     and its drag handle stay desktop-only machinery. */
+     and its drag handle stay desktop-only machinery. The slide, the inset
+     sheet shape, and the shadow live in `.dt-viewer-panel` (globals.css),
+     sharing one curve with the chat column's squeeze. */
   return (
     <div
       role="dialog"
       aria-hidden={!visible}
-      className={`fixed right-0 top-0 z-[30] flex h-dvh flex-col border-l border-[var(--border)] bg-[var(--card)] transition-transform ease-out max-md:!w-full md:max-w-[92vw] ${
-        // shadow-2xl only while visible — when closed, translate-x-full moves
-        // the box off-screen but its blurred shadow still bleeds ~38px back
-        // onto the viewport's right edge. Dropping the shadow off-screen kills
-        // that stray sliver.
-        visible ? "translate-x-0 shadow-2xl" : "translate-x-full"
-      }`}
+      data-open={visible ? 'true' : 'false'}
+      className="dt-viewer-panel fixed right-0 top-0 z-[30] flex h-dvh flex-col bg-[var(--card)] max-md:!w-full md:max-w-[92vw]"
       style={{
         // Constant string (not a state value) so SSR and the first client
         // render agree; the real width lives in the var, updated imperatively.
         width: `var(${VIEWER_WIDTH_VAR}, ${VIEWER_WIDTH_DEFAULT}px)`,
-        willChange: "transform",
-        transitionDuration: `${ANIM_MS}ms`,
-        pointerEvents: visible ? "auto" : "none",
+        willChange: 'transform',
       }}
     >
-      {/* Left-edge resize handle. A wide invisible hit-area with a hairline
-          that tints on hover/drag — drag left/right to set the panel width. */}
+      {/* Left-edge resize handle. A narrow invisible hit-area whose grip pill
+          shows on hover — drag left/right to set the panel width. */}
       <div
         onPointerDown={startResize}
         role="separator"
         aria-orientation="vertical"
-        aria-label={t("Resize viewer")}
-        className="group/resize absolute left-0 top-0 z-10 h-full w-2 -translate-x-1/2 cursor-col-resize max-md:hidden"
+        aria-label={t('Resize viewer')}
+        className="group/resize absolute inset-y-0 left-0 z-10 w-2 cursor-col-resize max-md:hidden"
       >
-        <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover/resize:bg-[var(--primary)]/40" />
+        <span className="absolute left-[3px] top-1/2 h-10 w-[3px] -translate-y-1/2 rounded-full bg-transparent transition-colors group-hover/resize:bg-[color-mix(in_srgb,var(--muted-foreground)_35%,transparent)]" />
       </div>
       <TabBar
         tabs={tabs}
@@ -762,41 +761,46 @@ function SessionViewerPanelInner(
         tutorSessions={tutorSessions}
         activeTutorSessionId={activeTutorSession?.session_id ?? null}
         onSelectHome={() => {
-          setActiveTabId(null);
-          setActiveTutorSessionId(null);
+          setActiveTabId(null)
+          setActiveTutorSessionId(null)
         }}
-        onSelectTutorSession={(tutorSessionId) => {
-          setActiveTabId(null);
-          setActiveTutorSessionId(tutorSessionId);
+        onSelectTutorSession={tutorSessionId => {
+          setActiveTabId(null)
+          setActiveTutorSessionId(tutorSessionId)
         }}
         onSelect={setActiveTabId}
         onCloseTab={closeTab}
+        onNewTab={openNewTab}
         onClosePanel={onClose}
+        actions={activeTab?.kind === 'file' ? <FileTabActions source={activeTab.source} /> : null}
       />
-      <div className="relative flex-1 overflow-hidden bg-[var(--card)]">
-        {activeTab?.kind === "file" ? (
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[var(--card)]">
+        {activeTab?.kind === 'file' ? (
           <FileTabBody source={activeTab.source} />
-        ) : activeTab?.kind === "web" ? (
+        ) : activeTab?.kind === 'web' ? (
           <WebTabBody key={activeTab.url} url={activeTab.url} />
-        ) : activeTab?.kind === "markdown-note" ? (
+        ) : activeTab?.kind === 'markdown-note' ? (
           <ChatMarkdownNoteTabBody
-            key={`${activeTab.id}:${sessionId ?? "pending"}`}
+            key={`${activeTab.id}:${sessionId ?? 'pending'}`}
             sessionId={sessionId}
           />
-        ) : activeTab?.kind === "quiz-followup" ? (
-          <QuizFollowupTabBody
-            key={activeTab.context.questionKey}
-            context={activeTab.context}
-          />
-        ) : activeTab?.kind === "selection-tutor" ? (
-          <QuizFollowupTabBody
-            key={activeTab.context.questionKey}
-            context={activeTab.context}
-          />
-        ) : activeTab?.kind === "geogebra" ? (
+        ) : activeTab?.kind === 'quiz-followup' ? (
+          <QuizFollowupTabBody key={activeTab.context.questionKey} context={activeTab.context} />
+        ) : activeTab?.kind === 'selection-tutor' ? (
+          <QuizFollowupTabBody key={activeTab.context.questionKey} context={activeTab.context} />
+        ) : activeTab?.kind === 'geogebra' ? (
           <GeogebraTabBody key={activeTab.id} script={activeTab.script} />
-        ) : activeTab?.kind === "subagent" ? (
-          <SubagentTabBody
+        ) : activeTab?.kind === 'new' ? (
+          <div className="h-full overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
+            <ActivityOpener
+              autoFocus
+              onOpenWebTab={url => openFromNewTab(() => openWebTab(url))}
+              onOpenLocalFile={file => openFromNewTab(() => openLocalFile(file))}
+              onOpenMarkdownNote={() => openFromNewTab(openMarkdownNoteTab)}
+            />
+          </div>
+        ) : activeTab?.kind === 'subagent' ? (
+          <ConsultationTabBody
             key={activeTab.id}
             tabEvents={activeTab.events}
             sessionId={sessionId}
@@ -806,11 +810,14 @@ function SessionViewerPanelInner(
             key={activeTutorSession.session_id}
             context={savedTutorTabContext(
               activeTutorSession,
-              i18n.resolvedLanguage ?? i18n.language,
+              i18n.resolvedLanguage ?? i18n.language
             )}
           />
         ) : (
           <ActivityHome
+            sessionId={sessionId}
+            taskDraftIds={taskDraftIds}
+            onTaskDraftChange={onTaskDraftChange}
             activity={activity}
             open={visible}
             configSection={configSection}
@@ -821,23 +828,32 @@ function SessionViewerPanelInner(
         )}
       </div>
     </div>
-  );
+  )
 }
 
-const SessionViewerPanel = memo(forwardRef(SessionViewerPanelInner));
-export default SessionViewerPanel;
+const SessionViewerPanel = memo(forwardRef(SessionViewerPanelInner))
+export default SessionViewerPanel
 
 /* ------------------------------------------------------------------ */
 /*  Tab bar                                                            */
 /* ------------------------------------------------------------------ */
 
 /**
- * Chrome-style tab bar. The strip itself is a muted band; the active tab
- * "lifts" out of it in the page-body colour with rounded top corners — so
- * the active tab and the body underneath read as one continuous surface,
- * exactly like a browser tab. No coloured top stripe; inactive tabs stay
- * transparent over the strip.
+ * Pill tab bar. No band behind it and no browser-tab chrome: the header is
+ * the panel's own surface, the focused tab is a soft filled pill and the
+ * rest are quiet text that tint on hover. The Activity home is always first
+ * and never closeable; a tab's close button stays visible on the focused tab
+ * and appears on hover for the others.
  */
+const TAB_PILL =
+  'inline-flex h-7 shrink-0 items-center rounded-lg text-[12.5px] font-medium transition-colors'
+const TAB_ACTIVE = 'bg-[color-mix(in_srgb,var(--muted)_85%,transparent)] text-[var(--foreground)]'
+const TAB_IDLE =
+  'text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--muted)_55%,transparent)] hover:text-[var(--foreground)]'
+const TAB_FOCUS =
+  'focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]'
+const HEADER_ICON = `inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-[var(--muted-foreground)] transition-colors hover:bg-[color-mix(in_srgb,var(--muted)_70%,transparent)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 ${TAB_FOCUS}`
+
 function TabBar({
   tabs,
   activeTabId,
@@ -848,117 +864,135 @@ function TabBar({
   onSelectTutorSession,
   onSelect,
   onCloseTab,
+  onNewTab,
   onClosePanel,
+  actions,
 }: {
-  tabs: ViewerTab[];
-  activeTabId: string | null;
-  homeActive: boolean;
-  tutorSessions: SessionSummary[];
-  activeTutorSessionId: string | null;
-  onSelectHome: () => void;
-  onSelectTutorSession: (sessionId: string) => void;
-  onSelect: (id: string) => void;
-  onCloseTab: (id: string) => void;
-  onClosePanel: () => void;
+  tabs: ViewerTab[]
+  activeTabId: string | null
+  homeActive: boolean
+  tutorSessions: SessionSummary[]
+  activeTutorSessionId: string | null
+  onSelectHome: () => void
+  onSelectTutorSession: (sessionId: string) => void
+  onSelect: (id: string) => void
+  onCloseTab: (id: string) => void
+  onNewTab: () => void
+  onClosePanel: () => void
+  /** The focused tab's own actions (download, open in browser), kept in the
+   *  header so they don't cost the content a row of their own. */
+  actions?: ReactNode
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   return (
-    <div className="flex shrink-0 items-end gap-2 bg-[color-mix(in_srgb,var(--muted)_40%,var(--background))] px-2 pt-2 pb-0">
-      <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-x-auto">
-        {/* Persistent Activity home — always first, never closeable. It's the
-            session-activity landing; opening a file/web tab focuses that tab
-            and this recedes, browser-home-tab style. */}
+    <div className="flex h-12 shrink-0 items-center gap-1 pl-2.5 pr-2">
+      <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={onSelectHome}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
-            homeActive
-              ? "bg-[var(--card)] text-[var(--foreground)]"
-              : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
-          }`}
-          title={t("Activity")}
+          aria-pressed={homeActive}
+          className={`${TAB_PILL} ${TAB_FOCUS} gap-1.5 px-2.5 ${homeActive ? TAB_ACTIVE : TAB_IDLE}`}
         >
-          <Activity size={11} strokeWidth={1.9} className="shrink-0" />
-          <span>{t("Activity")}</span>
+          <Activity size={13} strokeWidth={1.8} className="shrink-0" />
+          <span>{t('Activity')}</span>
         </button>
-        {tutorSessions.map((session) => {
-          const active = session.session_id === activeTutorSessionId;
-          const label = session.title || t("Little Tutor");
+        {tutorSessions.map(session => {
+          const active = session.session_id === activeTutorSessionId
+          const label = session.title || t('Little Tutor')
           return (
-            <button
-              key={session.session_id}
-              type="button"
-              onClick={() => onSelectTutorSession(session.session_id)}
-              className={`inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
-                active
-                  ? "bg-[var(--card)] text-[var(--foreground)]"
-                  : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
-              }`}
-              title={label}
-            >
-              <GraduationCap size={11} strokeWidth={1.9} className="shrink-0" />
-              <span className="truncate">{label}</span>
-            </button>
-          );
+            <Tooltip key={session.session_id} label={label} side="bottom">
+              <button
+                type="button"
+                onClick={() => onSelectTutorSession(session.session_id)}
+                className={`inline-flex max-w-[180px] shrink-0 items-center gap-1.5 rounded-t-md py-1.5 pl-2.5 pr-3 text-[11.5px] font-medium transition-colors ${
+                  active
+                    ? 'bg-[var(--card)] text-[var(--foreground)]'
+                    : 'bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]'
+                }`}
+                aria-label={label}
+              >
+                <GraduationCap size={11} strokeWidth={1.9} className="shrink-0" />
+                <span className="truncate">{label}</span>
+              </button>
+            </Tooltip>
+          )
         })}
-        {tabs.map((tab) => {
-          const active = tab.id === activeTabId;
+        {tabs.map(tab => {
+          const active = tab.id === activeTabId
           const Icon =
-            tab.kind === "web"
+            tab.kind === 'web'
               ? Globe
-              : tab.kind === "markdown-note"
+              : tab.kind === 'markdown-note'
                 ? NotebookPen
-                : tab.kind === "selection-tutor"
+                : tab.kind === 'selection-tutor'
                   ? GraduationCap
-                  : tab.kind === "quiz-followup"
+                  : tab.kind === 'quiz-followup'
                     ? MessageSquarePlus
-                    : tab.kind === "geogebra"
+                    : tab.kind === 'geogebra'
                       ? Compass
-                      : Paperclip;
+                      : tab.kind === 'new'
+                        ? Plus
+                        : Paperclip
           return (
             <div
               key={tab.id}
-              className={`group inline-flex max-w-[180px] shrink-0 items-center rounded-t-md text-[11.5px] font-medium transition-colors ${
-                active
-                  ? "bg-[var(--card)] text-[var(--foreground)]"
-                  : "bg-transparent text-[var(--muted-foreground)] hover:bg-[color-mix(in_srgb,var(--card)_70%,transparent)] hover:text-[var(--foreground)]"
-              }`}
-              title={tab.label}
+              className={`group ${TAB_PILL} max-w-[190px] ${active ? TAB_ACTIVE : TAB_IDLE}`}
             >
               <button
                 type="button"
                 onClick={() => onSelect(tab.id)}
-                className="inline-flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-2.5 pr-1 text-left"
+                aria-pressed={active}
+                aria-label={tab.label}
+                className={`inline-flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg pl-2.5 pr-1 text-left ${TAB_FOCUS}`}
               >
-                <Icon size={11} strokeWidth={1.9} className="shrink-0" />
+                <Icon size={13} strokeWidth={1.8} className="shrink-0" />
                 <span className="truncate">{tab.label}</span>
               </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCloseTab(tab.id);
-                }}
-                className="mr-1 rounded-sm p-[1px] text-[var(--muted-foreground)] opacity-60 transition-opacity hover:bg-[var(--muted)]/70 hover:text-[var(--foreground)] hover:opacity-100"
-                aria-label={t("Close tab")}
-              >
-                <X size={10} />
-              </button>
+              <Tooltip label={t('Close tab')} side="bottom">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation()
+                    onCloseTab(tab.id)
+                  }}
+                  className={`mr-1 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] transition-[opacity,background-color,color] hover:bg-[color-mix(in_srgb,var(--foreground)_8%,transparent)] hover:text-[var(--foreground)] focus-visible:opacity-100 ${TAB_FOCUS} ${
+                    active ? 'opacity-70' : 'opacity-0 group-hover:opacity-70'
+                  }`}
+                  aria-label={t('Close tab')}
+                >
+                  <X size={12} strokeWidth={2} />
+                </button>
+              </Tooltip>
             </div>
-          );
+          )
         })}
       </div>
-      <button
-        type="button"
-        onClick={onClosePanel}
-        className="mb-1 shrink-0 rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)]"
-        aria-label={t("Close viewer")}
-        title={t("Close viewer")}
-      >
-        <X size={14} />
-      </button>
+      {actions ? (
+        <>
+          {actions}
+          <span
+            aria-hidden="true"
+            className="mx-1 h-4 w-px shrink-0 bg-[color-mix(in_srgb,var(--border)_85%,transparent)]"
+          />
+        </>
+      ) : null}
+      <Tooltip label={t('New tab')} side="bottom">
+        <button type="button" onClick={onNewTab} className={HEADER_ICON} aria-label={t('New tab')}>
+          <Plus size={16} strokeWidth={1.8} />
+        </button>
+      </Tooltip>
+      <Tooltip label={t('Close viewer')} side="bottom">
+        <button
+          type="button"
+          onClick={onClosePanel}
+          className={HEADER_ICON}
+          aria-label={t('Close viewer')}
+        >
+          <X size={15} strokeWidth={1.8} />
+        </button>
+      </Tooltip>
     </div>
-  );
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -972,6 +1006,9 @@ function TabBar({
  * this same panel.
  */
 function ActivityHome({
+  sessionId,
+  taskDraftIds,
+  onTaskDraftChange,
   activity,
   open,
   configSection,
@@ -979,99 +1016,149 @@ function ActivityHome({
   onOpenWebTab,
   onOpenLocalFile,
 }: {
-  activity: SessionActivity;
-  open: boolean;
-  configSection?: ReactNode;
-  onOpenAttachment: (a: MessageAttachment) => void;
-  onOpenWebTab: (url: string) => void;
-  onOpenLocalFile: (file: File) => void;
+  sessionId: string | null
+  taskDraftIds?: string[]
+  onTaskDraftChange?: (ids: string[]) => void
+  activity: SessionActivity
+  open: boolean
+  configSection?: ReactNode
+  onOpenAttachment: (a: MessageAttachment) => void
+  onOpenWebTab: (url: string) => void
+  onOpenLocalFile: (file: File) => void
 }) {
   return (
-    <div className="h-full overflow-y-auto px-3 py-3">
+    <div className="h-full space-y-5 overflow-y-auto px-3 pb-8 pt-1 sm:px-3.5">
+      <TaskPanelSection
+        sessionId={sessionId}
+        draftTaskIds={taskDraftIds}
+        onDraftChange={onTaskDraftChange}
+      />
       <ActivityBody
         activity={activity}
         open={open}
         onOpenAttachment={onOpenAttachment}
         configSection={configSection}
       />
-      <ActivityOpener
-        onOpenWebTab={onOpenWebTab}
-        onOpenLocalFile={onOpenLocalFile}
-      />
+      <ActivityOpener onOpenWebTab={onOpenWebTab} onOpenLocalFile={onOpenLocalFile} />
     </div>
-  );
+  )
 }
 
-/** Compact "open a URL or local file" footer for the Activity home. */
+// A URL is not translatable — and routed through t() its "https:" prefix
+// reads as an i18next namespace separator and is eaten ("//example.com").
+const URL_PLACEHOLDER = 'https://example.com'
+
+/** Two quiet action rows for opening a URL or local file as a viewer tab. */
 function ActivityOpener({
   onOpenWebTab,
   onOpenLocalFile,
+  onOpenMarkdownNote,
+  autoFocus = false,
 }: {
-  onOpenWebTab: (url: string) => void;
-  onOpenLocalFile: (file: File) => void;
+  onOpenWebTab: (url: string) => void
+  onOpenLocalFile: (file: File) => void
+  /** Offered on the "+" launcher tab; the Activity home has its own route to
+   *  the note (the chat header's note button). */
+  onOpenMarkdownNote?: () => void
+  autoFocus?: boolean
 }) {
-  const { t } = useTranslation();
-  const [urlInput, setUrlInput] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useTranslation()
+  const [urlInput, setUrlInput] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const submitUrl = useCallback(() => {
-    const trimmed = urlInput.trim();
-    if (!trimmed) return;
-    const href = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    onOpenWebTab(href);
-    setUrlInput("");
-  }, [urlInput, onOpenWebTab]);
+    const trimmed = urlInput.trim()
+    if (!trimmed) return
+    const href = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+    onOpenWebTab(href)
+    setUrlInput('')
+  }, [urlInput, onOpenWebTab])
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) onOpenLocalFile(file);
-      e.target.value = "";
+      const file = e.target.files?.[0]
+      if (file) onOpenLocalFile(file)
+      e.target.value = ''
     },
-    [onOpenLocalFile],
-  );
+    [onOpenLocalFile]
+  )
 
   return (
-    <div className="mt-3 space-y-2 border-t border-[var(--border)]/40 pt-3">
-      <div className="px-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]/70">
-        {t("Open")}
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          submitUrl();
-        }}
-        className="flex items-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-2.5 py-1.5 transition-colors focus-within:border-[var(--primary)]/40"
-      >
-        <Globe
-          size={13}
-          strokeWidth={1.8}
-          className="shrink-0 text-[var(--muted-foreground)]"
-        />
-        <input
-          type="text"
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          placeholder={t("https://example.com")}
-          className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]/60"
-        />
-        <button
-          type="submit"
-          disabled={!urlInput.trim()}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md bg-[var(--primary)] px-2 py-1 text-[11px] font-medium text-[var(--primary-foreground)] transition-opacity disabled:opacity-30"
-          aria-label={t("Open URL")}
+    <section>
+      <h2 className={ACTIVITY_LABEL}>{t('Open')}</h2>
+      <div className={`${ACTIVITY_TILE} p-1`}>
+        <form
+          onSubmit={e => {
+            e.preventDefault()
+            submitUrl()
+          }}
+          className={`flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 transition-colors ${ACTIVITY_ROW_HOVER} focus-within:bg-[var(--card)] focus-within:shadow-[0_0_0_1px_color-mix(in_srgb,var(--ring)_55%,transparent)]`}
         >
-          <ArrowRight size={11} strokeWidth={2.2} />
+          <Globe
+            size={15}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="shrink-0 text-[var(--muted-foreground)]"
+          />
+          <input
+            type="text"
+            value={urlInput}
+            onChange={e => setUrlInput(e.target.value)}
+            aria-label={t('Open URL')}
+            placeholder={URL_PLACEHOLDER}
+            autoFocus={autoFocus}
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-[var(--foreground)] outline-none placeholder:text-[color-mix(in_srgb,var(--muted-foreground)_75%,transparent)]"
+          />
+          <button
+            type="submit"
+            disabled={!urlInput.trim()}
+            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] transition-[opacity,background-color] hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)] disabled:bg-transparent disabled:text-[var(--muted-foreground)] disabled:opacity-50"
+            aria-label={t('Open URL')}
+          >
+            <ArrowRight size={13} strokeWidth={2} />
+          </button>
+        </form>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
+        >
+          <FileUp
+            size={15}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="shrink-0 text-[var(--muted-foreground)]"
+          />
+          <span className="min-w-0 flex-1 truncate">{t('Open a local file')}</span>
+          <ChevronRight
+            size={14}
+            strokeWidth={1.7}
+            aria-hidden="true"
+            className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          />
         </button>
-      </form>
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)]/55 bg-[var(--background)] px-3 py-1.5 text-[12px] font-medium text-[var(--muted-foreground)] transition-colors hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
-      >
-        <FileUp size={13} strokeWidth={1.8} />
-        {t("Open a local file")}
-      </button>
+        {onOpenMarkdownNote ? (
+          <button
+            type="button"
+            onClick={onOpenMarkdownNote}
+            className={`group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[12.5px] font-medium text-[var(--foreground)] transition-colors ${ACTIVITY_ROW_HOVER} focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ring)]`}
+          >
+            <NotebookPen
+              size={15}
+              strokeWidth={1.7}
+              aria-hidden="true"
+              className="shrink-0 text-[var(--muted-foreground)]"
+            />
+            <span className="min-w-0 flex-1 truncate">{t('Markdown note')}</span>
+            <ChevronRight
+              size={14}
+              strokeWidth={1.7}
+              aria-hidden="true"
+              className="shrink-0 text-[var(--muted-foreground)] opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+            />
+          </button>
+        ) : null}
+      </div>
       <input
         ref={fileInputRef}
         type="file"
@@ -1080,65 +1167,67 @@ function ActivityOpener({
         aria-hidden="true"
         tabIndex={-1}
       />
-    </div>
-  );
+    </section>
+  )
 }
 
 /* ------------------------------------------------------------------ */
 /*  File tab body                                                      */
 /* ------------------------------------------------------------------ */
 
-function FileTabBody({ source }: { source: FilePreviewSource }) {
-  const { t } = useTranslation();
-  const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source]);
-  const kind = previewKindFor(source);
-  const filename = source.filename || t("Attachment");
+/** Where a file tab's bytes can be fetched: the served URL, or a data URL
+ *  for a pending (un-sent) base64 attachment so download / open-in-browser
+ *  still work before it is uploaded. */
+function fileUrlFor(source: FilePreviewSource): string | null {
+  const previewUrl = resolveSourceUrl(source, apiUrl)
+  if (previewUrl) return previewUrl
+  if (source.base64) {
+    const mime = source.mimeType || 'application/octet-stream'
+    return `data:${mime};base64,${source.base64}`
+  }
+  return null
+}
 
-  // Prefer the served URL; fall back to a data URL for pending (un-sent)
-  // base64 attachments so download / open-in-browser still work.
-  const fileUrl = useMemo(() => {
-    if (previewUrl) return previewUrl;
-    if (source.base64) {
-      const mime = source.mimeType || "application/octet-stream";
-      return `data:${mime};base64,${source.base64}`;
-    }
-    return null;
-  }, [previewUrl, source.base64, source.mimeType]);
-
-  const openInBrowser = useCallback(() => {
-    if (fileUrl) window.open(fileUrl, "_blank", "noopener,noreferrer");
-  }, [fileUrl]);
-
+/** Download + open-in-browser for the focused file tab, shown in the tab
+ *  bar. The tab already names the file, so these are bare icons. */
+function FileTabActions({ source }: { source: FilePreviewSource }) {
+  const { t } = useTranslation()
+  const fileUrl = useMemo(() => fileUrlFor(source), [source])
+  const filename = source.filename || t('Attachment')
   return (
-    <div className="flex h-full flex-col">
-      {/* The tab already carries the filename + type, so this strip is just
-          a minimal action rail — no duplicated name/icon/label. */}
-      <div className="flex shrink-0 items-center justify-end gap-0.5 border-b border-[var(--border)]/40 bg-[var(--card)] px-2 py-1">
-        {fileUrl ? (
-          <a
-            href={fileUrl}
-            download={filename}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)]"
-            title={t("Download")}
-          >
-            <Download size={13} strokeWidth={1.8} />
+    <>
+      {fileUrl ? (
+        <Tooltip label={t('Download')} side="bottom">
+          <a href={fileUrl} download={filename} className={HEADER_ICON} aria-label={t('Download')}>
+            <Download size={15} strokeWidth={1.8} />
           </a>
-        ) : null}
+        </Tooltip>
+      ) : null}
+      <Tooltip label={t('Open in browser')} side="bottom">
         <button
           type="button"
-          onClick={openInBrowser}
+          onClick={() => {
+            if (fileUrl) window.open(fileUrl, '_blank', 'noopener,noreferrer')
+          }}
           disabled={!fileUrl}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted-foreground)] transition-colors hover:bg-[var(--muted)]/45 hover:text-[var(--foreground)] disabled:opacity-40"
+          className={HEADER_ICON}
+          aria-label={t('Open in browser')}
         >
-          <ExternalLink size={11} strokeWidth={1.8} />
-          {t("Open in browser")}
+          <ExternalLink size={14} strokeWidth={1.8} />
         </button>
-      </div>
-      <div className="relative flex-1 overflow-hidden">
-        <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
-      </div>
+      </Tooltip>
+    </>
+  )
+}
+
+function FileTabBody({ source }: { source: FilePreviewSource }) {
+  const previewUrl = useMemo(() => resolveSourceUrl(source, apiUrl), [source])
+  const kind = previewKindFor(source)
+  return (
+    <div className="relative h-full overflow-hidden">
+      <PreviewBody source={source} previewUrl={previewUrl} kind={kind} />
     </div>
-  );
+  )
 }
 
 const PreviewBody = memo(function PreviewBody({
@@ -1146,57 +1235,73 @@ const PreviewBody = memo(function PreviewBody({
   previewUrl,
   kind,
 }: {
-  source: FilePreviewSource;
-  previewUrl: string | null;
-  kind: ReturnType<typeof previewKindFor> | null;
+  source: FilePreviewSource
+  previewUrl: string | null
+  kind: ReturnType<typeof previewKindFor> | null
 }) {
-  const filename = source.filename;
+  const filename = source.filename
 
-  if (kind === "office-text") {
-    return (
+  if (kind === 'office-text') {
+    const fallback = (
       <OfficeTextPreview
         filename={filename}
         extractedText={source.extractedText}
         url={previewUrl}
       />
-    );
+    )
+    if (previewUrl) {
+      return <OfficePdfPreview url={previewUrl} filename={filename} fallback={fallback} />
+    }
+    return fallback
   }
 
   if (!previewUrl) {
-    return <FallbackPreview filename={filename} url={null} reason="legacy" />;
+    return <FallbackPreview filename={filename} url={null} reason="legacy" />
   }
 
   switch (kind) {
-    case "pdf":
-      return <PdfPreview url={previewUrl} filename={filename} />;
-    case "docx":
-      return <DocxPreview url={previewUrl} />;
-    case "xlsx":
-      return <XlsxPreview url={previewUrl} />;
-    case "image":
-      return <ImagePreview url={previewUrl} filename={filename} />;
-    case "video":
-      return <VideoPreview url={previewUrl} filename={filename} />;
-    case "svg":
-      return <SvgPreview url={previewUrl} filename={filename} />;
-    case "markdown":
+    case 'pdf':
+      return <PdfPreview url={previewUrl} filename={filename} />
+    case 'docx':
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<DocxPreview url={previewUrl} />}
+        />
+      )
+    case 'xlsx':
+      return (
+        <OfficePdfPreview
+          url={previewUrl}
+          filename={filename}
+          fallback={<XlsxPreview url={previewUrl} />}
+        />
+      )
+    case 'image':
+      return <ImagePreview url={previewUrl} filename={filename} />
+    case 'video':
+      return <VideoPreview url={previewUrl} filename={filename} />
+    case 'svg':
+      return <SvgPreview url={previewUrl} filename={filename} />
+    case 'markdown':
       return (
         <div className="h-full overflow-y-auto">
           <MarkdownPreview url={previewUrl} />
         </div>
-      );
-    case "code":
-    case "text":
+      )
+    case 'code':
+    case 'text':
       return (
         <div className="h-full overflow-y-auto">
           <TextPreview url={previewUrl} filename={filename} />
         </div>
-      );
-    case "fallback":
+      )
+    case 'fallback':
     default:
-      return <FallbackPreview filename={filename} url={previewUrl} />;
+      return <FallbackPreview filename={filename} url={previewUrl} />
   }
-});
+})
 
 /* ------------------------------------------------------------------ */
 /*  Web tab body — iframe with safety fallback                         */
@@ -1218,77 +1323,71 @@ const PreviewBody = memo(function PreviewBody({
  *    user knows the spinner isn't a real load-in-progress.
  */
 function WebTabBody({ url }: { url: string }) {
-  const { t } = useTranslation();
-  const [loaded, setLoaded] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const host = hostnameFor(url);
+  const { t } = useTranslation()
+  const [loaded, setLoaded] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
+  const host = hostnameFor(url)
 
   const openInBrowser = useCallback(() => {
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, [url]);
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [url])
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setTimedOut(true), 4500);
-    return () => window.clearTimeout(timer);
-  }, []);
+    const timer = window.setTimeout(() => setTimedOut(true), 4500)
+    return () => window.clearTimeout(timer)
+  }, [])
 
-  const blocked = timedOut && !loaded;
+  const blocked = timedOut && !loaded
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)]/40 bg-[var(--card)] px-4 py-2.5">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--muted)]/55">
-          <Globe
-            size={14}
-            strokeWidth={1.7}
-            className="text-[var(--muted-foreground)]"
-          />
+      <div className="flex shrink-0 items-center gap-2 border-b border-[color-mix(in_srgb,var(--border)_40%,transparent)] bg-[var(--card)] px-4 py-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--muted)_55%,transparent)]">
+          <Globe size={14} strokeWidth={1.7} className="text-[var(--muted-foreground)]" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
             {host}
           </div>
-          <div className="truncate text-[10px] text-[var(--muted-foreground)]">
-            {url}
-          </div>
+          <div className="truncate text-[10px] text-[var(--muted-foreground)]">{url}</div>
         </div>
         <button
           type="button"
           onClick={openInBrowser}
           className={`inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
             blocked
-              ? "bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[var(--primary)]/90"
-              : "border border-[var(--border)]/55 text-[var(--muted-foreground)] hover:border-[var(--primary)]/35 hover:text-[var(--primary)]"
+              ? 'bg-[var(--primary)] text-[var(--primary-foreground)] hover:bg-[color-mix(in_srgb,var(--primary)_90%,transparent)]'
+              : 'border border-[color-mix(in_srgb,var(--border)_55%,transparent)] text-[var(--muted-foreground)] hover:border-[color-mix(in_srgb,var(--primary)_35%,transparent)] hover:text-[var(--primary)]'
           }`}
         >
           <ExternalLink size={11} strokeWidth={1.9} />
-          {t("Open in browser")}
+          {t('Open in browser')}
         </button>
       </div>
 
       {/* Persistent info banner — explains the iframe limitation. Swaps to
           a louder warning once we suspect the site has refused to embed. */}
       <div
-        className={`flex shrink-0 items-start gap-2 border-b border-[var(--border)]/30 px-4 py-2 text-[11px] leading-snug ${
+        className={`flex shrink-0 items-start gap-2 border-b border-[color-mix(in_srgb,var(--border)_30%,transparent)] px-4 py-2 text-[11px] leading-snug ${
           blocked
-            ? "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))] text-[var(--foreground)]"
-            : "bg-[color-mix(in_srgb,var(--muted)_45%,var(--card))] text-[var(--muted-foreground)]"
+            ? 'bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))] text-[var(--foreground)]'
+            : 'bg-[color-mix(in_srgb,var(--muted)_45%,var(--card))] text-[var(--muted-foreground)]'
         }`}
       >
         <AlertCircle
           size={12}
           strokeWidth={1.9}
           className={`mt-[1px] shrink-0 ${
-            blocked ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
+            blocked ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]'
           }`}
         />
         <span>
           {blocked
             ? t(
-                "This site looks like it refused to embed (its security headers block iframes). Use “Open in browser” to view it in a real tab.",
+                'This site looks like it refused to embed (its security headers block iframes). Use “Open in browser” to view it in a real tab.'
               )
             : t(
-                "Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.",
+                'Many sites refuse to embed for security reasons. If the page below stays blank, use “Open in browser”.'
               )}
         </span>
       </div>
@@ -1304,18 +1403,18 @@ function WebTabBody({ url }: { url: string }) {
           referrerPolicy="no-referrer"
         />
         {!loaded && !timedOut ? (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--card)]/70 text-[12px] text-[var(--muted-foreground)] backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[color-mix(in_srgb,var(--card)_70%,transparent)] text-[12px] text-[var(--muted-foreground)] backdrop-blur-sm">
             <Loader2
               size={18}
               strokeWidth={1.7}
-              className="animate-spin text-[var(--primary)]/80"
+              className="animate-spin text-[color-mix(in_srgb,var(--primary)_80%,transparent)]"
             />
-            <span>{t("Loading {{host}}…", { host })}</span>
+            <span>{t('Loading {{host}}…', { host })}</span>
           </div>
         ) : null}
       </div>
     </div>
-  );
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -1331,12 +1430,7 @@ function WebTabBody({ url }: { url: string }) {
 function GeogebraTabBody({ script }: { script: string }) {
   return (
     <div className="h-full w-full overflow-auto bg-[var(--card)] p-3">
-      <Geogebra
-        script={script}
-        width={560}
-        height={520}
-        className="m-0 border-0 bg-transparent"
-      />
+      <Geogebra script={script} width={560} height={520} className="m-0 border-0 bg-transparent" />
     </div>
-  );
+  )
 }

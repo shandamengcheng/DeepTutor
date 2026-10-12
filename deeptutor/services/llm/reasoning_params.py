@@ -4,11 +4,22 @@ from __future__ import annotations
 
 from typing import Any
 
+#: Reasoning level to ask for on a second attempt, after a first one spent its
+#: whole ``max_tokens`` budget thinking and returned no answer. ``"low"``
+#: rather than ``"minimal"``: local/Qwen models served via vLLM reject
+#: ``"minimal"``, and it disables thinking outright rather than trimming it.
+RETRY_REASONING_EFFORT = "low"
+
 _THINKING_STYLE_MAP = {
     "thinking_type": lambda enabled: {"thinking": {"type": "enabled" if enabled else "disabled"}},
     "enable_thinking": lambda enabled: {"enable_thinking": enabled},
     "reasoning_split": lambda enabled: {"reasoning_split": enabled},
 }
+# These values are used by callers that need a guaranteed reader-facing
+# response.  ``minimal``/``minimum`` are retained as off sentinels for
+# provider-native thinking controls for backwards compatibility; OpenRouter
+# receives the canonical ``none`` value below.
+_THINKING_OFF_EFFORTS = frozenset({"none", "minimal", "minimum"})
 _PROVIDER_THINKING_STYLES = {
     "deepseek": "thinking_type",
     "volcengine": "thinking_type",
@@ -106,6 +117,24 @@ def default_reasoning_effort_for(provider: str | None, model: str | None) -> str
     return None
 
 
+def thinking_off_effort_for(provider: str | None, model: str | None) -> str:
+    """The lowest effort *model* actually accepts as "thinking off".
+
+    ``"none"`` for almost everything, ``"minimal"`` for the families that
+    answer HTTP 400 to it (#734). The rule already existed inside
+    :func:`default_reasoning_effort_for`, but that function is consulted only
+    when the caller says nothing — so a caller that asks for ``"none"``
+    itself, as the reader-facing book blocks do, skipped the narrowing and got
+    the 400 the table exists to prevent. Naming it here keeps it beside
+    :data:`_MINIMAL_NOT_OFF_PATTERNS`, so adding a family to that table is
+    still an obvious prompt to check this one.
+    """
+    provider_name = (provider or "").strip().lower()
+    if _matches(model or "", _MINIMAL_NOT_OFF_PATTERNS.get(provider_name, ())):
+        return "minimal"
+    return "none"
+
+
 def build_openai_compatible_reasoning_kwargs(
     *,
     spec: Any,
@@ -120,6 +149,9 @@ def build_openai_compatible_reasoning_kwargs(
     ``custom`` bindings need model-family inference because their endpoint is
     user supplied and therefore cannot be identified by provider name alone.
     """
+    if reasoning_effort == "":
+        return {}
+
     provider_name = _spec_name(spec, binding)
     model_name = model or ""
     thinking_style = str(getattr(spec, "thinking_style", "") or "")
@@ -139,12 +171,23 @@ def build_openai_compatible_reasoning_kwargs(
             if not patterns:
                 patterns = custom_patterns
 
+    # Qwen Instruct variants do not implement thinking controls, even when a
+    # caller explicitly requests an effort. Do not replace the unsupported
+    # native parameter with the equally unsupported top-level effort field.
+    model_tokens = model_name.lower().replace("_", "-").split("-")
+    if thinking_style == "enable_thinking" and "instruct" in model_tokens:
+        return {}
+
     resolved_effort = reasoning_effort
     if resolved_effort is None:
         if patterns and _matches(model_name, patterns):
             resolved_effort = "high"
         else:
             resolved_effort = default_reasoning_effort_for(provider_name, model_name)
+    elif str(resolved_effort).strip().lower() == "none":
+        # An explicit "off" is subject to the same vendor limit as an inferred
+        # one — see ``thinking_off_effort_for``.
+        resolved_effort = thinking_off_effort_for(provider_name, model_name)
 
     semantic_effort: str | None = None
     if isinstance(resolved_effort, str):
@@ -153,15 +196,30 @@ def build_openai_compatible_reasoning_kwargs(
             semantic_effort = "minimal"
 
     kwargs: dict[str, Any] = {}
+    # OpenRouter exposes a provider-neutral reasoning object.  Keep the
+    # explicit off request and exclude any reasoning trace from the response;
+    # this is important for models whose gateway response otherwise uses the
+    # ``reasoning`` field alongside ``content``.
+    if provider_name == "openrouter" and semantic_effort == "none":
+        kwargs["extra_body"] = {
+            "reasoning": {"effort": "none", "exclude": True},
+        }
     if resolved_effort:
         suppress_top_level = bool(
-            thinking_style and (semantic_effort == "minimal" or thinking_style == "enable_thinking")
+            thinking_style
+            and (semantic_effort in _THINKING_OFF_EFFORTS or thinking_style == "enable_thinking")
         )
-        if not suppress_top_level:
+        if not suppress_top_level and not (
+            provider_name == "openrouter" and semantic_effort == "none"
+        ):
             kwargs["reasoning_effort"] = resolved_effort
 
-    if thinking_style and resolved_effort is not None:
-        thinking_enabled = semantic_effort != "minimal"
+    if (
+        thinking_style
+        and resolved_effort is not None
+        and not (provider_name == "openrouter" and semantic_effort == "none")
+    ):
+        thinking_enabled = semantic_effort not in _THINKING_OFF_EFFORTS
         extra = _THINKING_STYLE_MAP.get(thinking_style, lambda _enabled: None)(thinking_enabled)
         if extra:
             kwargs.setdefault("extra_body", {}).update(extra)
@@ -174,6 +232,7 @@ def build_openai_compatible_reasoning_kwargs(
 
 
 __all__ = [
+    "RETRY_REASONING_EFFORT",
     "build_openai_compatible_reasoning_kwargs",
     "default_reasoning_effort_for",
 ]

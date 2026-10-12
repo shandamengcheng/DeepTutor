@@ -1,30 +1,26 @@
-"use client";
+'use client'
 
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, Bot, Check, ChevronDown } from "lucide-react";
-import { useTranslation } from "react-i18next";
-import { agentGlyph } from "@/components/agents/agent-icons";
-import { useLingerExpand } from "@/hooks/use-linger-expand";
-import { useOutsideClick } from "@/hooks/use-outside-click";
-import ProviderIcon from "@/components/common/ProviderIcon";
-import type { LLMSelection } from "@/features/chat/model/protocol";
-import {
-  llmSelectionKey,
-  sameLLMSelection,
-  type LLMOption,
-} from "@/lib/llm-options";
+import { createElement, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, Bot, Check, ChevronDown } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { agentGlyph } from '@/components/agents/agent-icons'
+import { useLingerExpand } from '@/hooks/use-linger-expand'
+import { useOutsideClick } from '@/hooks/use-outside-click'
+import Tooltip from '@/shared/ui/Tooltip'
+import ToolbarLabel from './ToolbarLabel'
+import ProviderIcon from '@/components/common/ProviderIcon'
+import type { LLMSelection } from '@/features/chat/model/protocol'
+import { llmSelectionKey, sameLLMSelection, type LLMOption } from '@/lib/llm-options'
 
 function formatContextWindow(value?: number) {
-  if (!value) return "";
-  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M ctx`;
-  if (value >= 1_000) return `${Math.round(value / 1_000)}k ctx`;
-  return `${value} ctx`;
+  if (!value) return ''
+  if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M ctx`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}k ctx`
+  return `${value} ctx`
 }
 
 function providerLabel(option: LLMOption) {
-  return (
-    option.provider_label || option.provider || option.profile_name || "LLM"
-  );
+  return option.provider_label || option.provider || option.profile_name || 'LLM'
 }
 
 function ModelOptionRow({
@@ -32,41 +28,39 @@ function ModelOptionRow({
   selected,
   onSelect,
 }: {
-  option: LLMOption;
-  selected: boolean;
-  onSelect: () => void;
+  option: LLMOption
+  selected: boolean
+  onSelect: () => void
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   // Official model ID as the primary label (what gets sent to the API),
   // per design. The user-given nickname and profile live in the tooltip.
-  const modelLabel = option.model || option.model_name;
-  const contextWindow = formatContextWindow(option.context_window);
+  const modelLabel = option.model || option.model_name
+  const contextWindow = formatContextWindow(option.context_window)
   // Long model ids ("google/gemini-3-flash-preview") get ellipsized by the
   // inline layout; hovering the row reveals the full id as an overlay. The
   // scrollWidth check at mouseenter time keeps the overlay away from rows
   // that aren't actually truncated.
-  const nameRef = useRef<HTMLSpanElement>(null);
-  const [revealFull, setRevealFull] = useState(false);
+  const nameRef = useRef<HTMLSpanElement>(null)
+  const [revealFull, setRevealFull] = useState(false)
   return (
     <button
       type="button"
-      title={`${option.model_name} | ${option.profile_name}`}
+      aria-label={`${option.model_name} | ${option.profile_name}`}
       onClick={onSelect}
       onMouseEnter={() => {
-        const el = nameRef.current;
-        setRevealFull(!!el && el.scrollWidth > el.clientWidth + 1);
+        const el = nameRef.current
+        setRevealFull(!!el && el.scrollWidth > el.clientWidth + 1)
       }}
       onMouseLeave={() => setRevealFull(false)}
       className={`relative flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-        selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
+        selected ? 'bg-[var(--primary)]/[0.06]' : 'hover:bg-[var(--muted)]/45'
       }`}
     >
       <ProviderIcon
         provider={option.provider}
         size={14}
-        className={
-          selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
-        }
+        className={selected ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]'}
       />
       <span
         ref={nameRef}
@@ -76,43 +70,35 @@ function ModelOptionRow({
       </span>
       {option.is_active_default && (
         <span className="shrink-0 rounded-full bg-[var(--muted)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
-          {t("Default")}
+          {t('Default')}
         </span>
       )}
       <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--muted-foreground)]">
         {providerLabel(option)}
       </span>
       {contextWindow ? (
-        <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
-          {contextWindow}
-        </span>
+        <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">{contextWindow}</span>
       ) : null}
-      {selected && (
-        <Check
-          size={14}
-          strokeWidth={2}
-          className="shrink-0 text-[var(--primary)]"
-        />
-      )}
+      {selected && <Check size={14} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />}
       {revealFull && (
         <span className="pointer-events-none absolute inset-x-1.5 top-1/2 z-10 -translate-y-1/2 break-all rounded-lg border border-[var(--border)] bg-[var(--popover)] px-2 py-1 text-[12px] font-medium text-[var(--foreground)] shadow-md">
           {modelLabel}
         </span>
       )}
     </button>
-  );
+  )
 }
 
 export interface LocalAgentModelOption {
-  name: string;
-  kind?: string;
+  name: string
+  kind?: string
 }
 
 function LocalAgentIcon({ kind, size }: { kind?: string; size: number }) {
   return createElement(agentGlyph(kind) ?? Bot, {
     size,
-    className: "shrink-0",
-  });
+    className: 'shrink-0',
+  })
 }
 
 function LocalAgentOptionRow({
@@ -120,43 +106,32 @@ function LocalAgentOptionRow({
   selected,
   onSelect,
 }: {
-  agent: LocalAgentModelOption;
-  selected: boolean;
-  onSelect: () => void;
+  agent: LocalAgentModelOption
+  selected: boolean
+  onSelect: () => void
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   return (
     <button
       type="button"
-      title={agent.name}
       aria-label={agent.name}
       onClick={onSelect}
       className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-        selected ? "bg-[var(--primary)]/[0.06]" : "hover:bg-[var(--muted)]/45"
+        selected ? 'bg-[var(--primary)]/[0.06]' : 'hover:bg-[var(--muted)]/45'
       }`}
     >
-      <span
-        className={
-          selected ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"
-        }
-      >
+      <span className={selected ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]'}>
         <LocalAgentIcon kind={agent.kind} size={14} />
       </span>
       <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
         {agent.name}
       </span>
       <span className="shrink-0 text-[11px] text-[var(--muted-foreground)]">
-        {agent.kind || t("Agent")}
+        {agent.kind || t('Agent')}
       </span>
-      {selected && (
-        <Check
-          size={14}
-          strokeWidth={2}
-          className="shrink-0 text-[var(--primary)]"
-        />
-      )}
+      {selected && <Check size={14} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />}
     </button>
-  );
+  )
 }
 
 export default function ModelSelector({
@@ -171,51 +146,51 @@ export default function ModelSelector({
   systemDefaultLabel,
   systemDefaultDetail,
   helperText,
-  placement = "top",
+  placement = 'top',
+  pinned = false,
   onChange,
   onLocalAgentChange,
   onRefresh,
 }: {
-  options: LLMOption[];
+  options: LLMOption[]
   /** Local CLI Agents are first-class model execution targets. */
-  localAgents?: LocalAgentModelOption[];
-  selectedLocalAgent?: string | null;
-  activeDefault: LLMSelection | null;
-  value: LLMSelection | null;
-  loading: boolean;
-  error: boolean;
-  allowSystemDefault?: boolean;
-  systemDefaultLabel?: string;
-  systemDefaultDetail?: string;
-  helperText?: string;
-  placement?: "top" | "bottom";
-  onChange: (selection: LLMSelection | null) => void;
-  onLocalAgentChange?: (name: string | null) => void;
-  onRefresh?: () => void;
+  localAgents?: LocalAgentModelOption[]
+  selectedLocalAgent?: string | null
+  activeDefault: LLMSelection | null
+  value: LLMSelection | null
+  loading: boolean
+  error: boolean
+  allowSystemDefault?: boolean
+  systemDefaultLabel?: string
+  systemDefaultDetail?: string
+  helperText?: string
+  placement?: 'top' | 'bottom'
+  /** Optional always-visible label for surfaces outside the composer. */
+  pinned?: boolean
+  onChange: (selection: LLMSelection | null) => void
+  onLocalAgentChange?: (name: string | null) => void
+  onRefresh?: () => void
 }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open);
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const { expanded, linger, triggerProps: lingerProps } = useLingerExpand(open, 1200, pinned)
 
   const selectedSelection = selectedLocalAgent
     ? null
     : allowSystemDefault
       ? value
-      : (value ?? activeDefault);
-  const selectedKey = llmSelectionKey(selectedSelection);
+      : (value ?? activeDefault)
+  const selectedKey = llmSelectionKey(selectedSelection)
   const selectedOption = useMemo(
-    () =>
-      options.find((option) => sameLLMSelection(option, selectedSelection)) ??
-      null,
-    [options, selectedSelection],
-  );
+    () => options.find(option => sameLLMSelection(option, selectedSelection)) ?? null,
+    [options, selectedSelection]
+  )
   const selectedAgentOption = useMemo(
-    () =>
-      localAgents.find((agent) => agent.name === selectedLocalAgent) ?? null,
-    [localAgents, selectedLocalAgent],
-  );
-  const defaultTargetAppliedRef = useRef(false);
+    () => localAgents.find(agent => agent.name === selectedLocalAgent) ?? null,
+    [localAgents, selectedLocalAgent]
+  )
+  const defaultTargetAppliedRef = useRef(false)
 
   // The dropdown order is the default order: local Agents first, followed by
   // configured LLMs. Apply that default only when the caller has no saved or
@@ -223,124 +198,97 @@ export default function ModelSelector({
   // composer surface, including a local-Agent-only setup where LLM discovery
   // failed.
   useEffect(() => {
-    if (
-      defaultTargetAppliedRef.current ||
-      selectedAgentOption ||
-      selectedOption
-    ) {
-      return;
+    if (defaultTargetAppliedRef.current || selectedAgentOption || selectedOption) {
+      return
     }
 
-    const firstAgent = localAgents[0];
+    const firstAgent = localAgents[0]
     if (firstAgent) {
-      defaultTargetAppliedRef.current = true;
-      onChange(null);
-      onLocalAgentChange?.(firstAgent.name);
-      return;
+      defaultTargetAppliedRef.current = true
+      onChange(null)
+      onLocalAgentChange?.(firstAgent.name)
+      return
     }
 
-    const firstModel = options[0];
+    const firstModel = options[0]
     if (firstModel) {
-      defaultTargetAppliedRef.current = true;
-      onLocalAgentChange?.(null);
+      defaultTargetAppliedRef.current = true
+      onLocalAgentChange?.(null)
       onChange({
         profile_id: firstModel.profile_id,
         model_id: firstModel.model_id,
-      });
+      })
     }
-  }, [
-    localAgents,
-    onChange,
-    onLocalAgentChange,
-    options,
-    selectedAgentOption,
-    selectedOption,
-  ]);
+  }, [localAgents, onChange, onLocalAgentChange, options, selectedAgentOption, selectedOption])
 
   useOutsideClick(rootRef, open, () => {
-    setOpen(false);
-    linger();
-  });
+    setOpen(false)
+    linger()
+  })
 
-  const defaultLabel = systemDefaultLabel || t("System default");
-  const defaultDetail =
-    systemDefaultDetail || t("Use the active default model from Settings");
-  const modelErrorOnly = error && localAgents.length === 0;
-  const canRefresh = modelErrorOnly && Boolean(onRefresh);
+  const defaultLabel = systemDefaultLabel || t('System default')
+  const defaultDetail = systemDefaultDetail || t('Use the active default model from Settings')
+  const modelErrorOnly = error && localAgents.length === 0
+  const canRefresh = modelErrorOnly && Boolean(onRefresh)
   const disabled =
     (loading && localAgents.length === 0) ||
     (!canRefresh &&
-      (modelErrorOnly ||
-        (options.length === 0 &&
-          localAgents.length === 0 &&
-          !allowSystemDefault)));
+      (modelErrorOnly || (options.length === 0 && localAgents.length === 0 && !allowSystemDefault)))
   const label = selectedAgentOption
     ? selectedAgentOption.name
     : loading
-      ? t("Loading models")
+      ? t('Loading models')
       : modelErrorOnly
-      ? canRefresh
-        ? t("Refresh models")
-        : t("Models unavailable")
-      : allowSystemDefault && !selectedSelection
-        ? defaultLabel
-        : // Official model ID, consistent with the dropdown rows.
-          selectedOption?.model ||
-          selectedOption?.model_name ||
-          t("Select model");
-  const menuPlacementClass =
-    placement === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5";
+        ? canRefresh
+          ? t('Refresh models')
+          : t('Models unavailable')
+        : allowSystemDefault && !selectedSelection
+          ? defaultLabel
+          : selectedOption?.model || selectedOption?.model_name || t('Select model')
+  const menuPlacementClass = placement === 'bottom' ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
 
   return (
     <div ref={rootRef} className="relative">
-      {/* Same resting/expanded treatment as PersonaSelector: the brand
-          icon is the whole control at rest; hovering (or opening) slides
-          the model name out with a max-width animation and lingers ~1.2s
-          after leave/selection before collapsing. */}
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => {
-          if (canRefresh) {
-            setOpen(false);
-            onRefresh?.();
-            return;
-          }
-          setOpen((current) => !current);
-        }}
-        aria-label={canRefresh ? t("Refresh models") : t("Select model")}
-        title={canRefresh ? t("Refresh models") : undefined}
-        aria-expanded={open}
-        {...lingerProps}
-        className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
-          disabled
-            ? "cursor-not-allowed text-[var(--border)]"
-            : open
-              ? "bg-[var(--muted)] text-[var(--foreground)]"
-              : "text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]"
-        }`}
-      >
-        {modelErrorOnly ? (
-          <AlertCircle size={16} strokeWidth={1.7} className="shrink-0" />
-        ) : selectedAgentOption ? (
-          <LocalAgentIcon kind={selectedAgentOption.kind} size={16} />
-        ) : (
-          <ProviderIcon provider={selectedOption?.provider} size={16} />
-        )}
-        <span
-          className={`flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin-left] duration-300 ease-out ${
-            expanded
-              ? "ml-1.5 max-w-[180px] opacity-100"
-              : "ml-0 max-w-0 opacity-0"
+      {/* The model name shares the composer selectors' spring and hover delay. */}
+      <Tooltip label={canRefresh ? t('Refresh models') : label} suppressed={open} side="top">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            if (canRefresh) {
+              setOpen(false)
+              onRefresh?.()
+              return
+            }
+            setOpen(current => !current)
+          }}
+          aria-label={canRefresh ? t('Refresh models') : t('Select model')}
+          aria-expanded={open}
+          {...lingerProps}
+          className={`inline-flex h-8 shrink-0 items-center rounded-lg px-2 text-[14px] font-medium transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+            disabled
+              ? 'cursor-not-allowed text-[var(--border)]'
+              : open
+                ? 'bg-[var(--muted)] text-[var(--foreground)]'
+                : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)]/55 hover:text-[var(--foreground)]'
           }`}
         >
-          <span className="min-w-0 truncate">{label}</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
-          />
-        </span>
-      </button>
+          {modelErrorOnly ? (
+            <AlertCircle size={16} strokeWidth={1.7} className="shrink-0" />
+          ) : selectedAgentOption ? (
+            <LocalAgentIcon kind={selectedAgentOption.kind} size={16} />
+          ) : (
+            <ProviderIcon provider={selectedOption?.provider} size={16} />
+          )}
+          <ToolbarLabel expanded={expanded} fullWidth>
+            <span className="min-w-0">{label}</span>
+            <ChevronDown
+              size={13}
+              className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          </ToolbarLabel>
+        </button>
+      </Tooltip>
 
       {open && !disabled && (
         <div
@@ -355,85 +303,75 @@ export default function ModelSelector({
             {allowSystemDefault && (
               <button
                 type="button"
-                title={defaultDetail}
+                aria-label={defaultDetail}
                 onClick={() => {
-                  onLocalAgentChange?.(null);
-                  onChange(null);
-                  setOpen(false);
-                  linger();
+                  onLocalAgentChange?.(null)
+                  onChange(null)
+                  setOpen(false)
+                  linger()
                 }}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors active:bg-[var(--muted)]/70 ${
-                  selectedKey === ""
-                    ? "bg-[var(--primary)]/[0.06]"
-                    : "hover:bg-[var(--muted)]/45"
+                  selectedKey === '' ? 'bg-[var(--primary)]/[0.06]' : 'hover:bg-[var(--muted)]/45'
                 }`}
               >
                 <Bot
                   size={14}
                   strokeWidth={1.7}
                   className={`shrink-0 ${
-                    selectedKey === ""
-                      ? "text-[var(--primary)]"
-                      : "text-[var(--muted-foreground)]"
+                    selectedKey === '' ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)]'
                   }`}
                 />
                 <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-[var(--foreground)]">
                   {defaultLabel}
                 </span>
-                {selectedKey === "" && (
-                  <Check
-                    size={14}
-                    strokeWidth={2}
-                    className="shrink-0 text-[var(--primary)]"
-                  />
+                {selectedKey === '' && (
+                  <Check size={14} strokeWidth={2} className="shrink-0 text-[var(--primary)]" />
                 )}
               </button>
             )}
             {localAgents.length > 0 ? (
               <div className="border-b border-[var(--border)]/50 pb-1">
                 <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-[var(--muted-foreground)]">
-                  {t("Agent")}
+                  {t('Agent')}
                 </div>
-                {localAgents.map((agent) => (
+                {localAgents.map(agent => (
                   <LocalAgentOptionRow
                     key={`agent:${agent.name}`}
                     agent={agent}
                     selected={selectedLocalAgent === agent.name}
                     onSelect={() => {
-                      onChange(null);
-                      onLocalAgentChange?.(
-                        selectedLocalAgent === agent.name ? null : agent.name,
-                      );
-                      setOpen(false);
-                      linger();
+                      onChange(null)
+                      onLocalAgentChange?.(selectedLocalAgent === agent.name ? null : agent.name)
+                      setOpen(false)
+                      linger()
                     }}
                   />
                 ))}
               </div>
             ) : null}
-            {options.map((option) => {
+            {options.map(option => {
               const optionSelection = {
                 profile_id: option.profile_id,
                 model_id: option.model_id,
-              };
-              const optionKey = llmSelectionKey(optionSelection);
+              }
+              const optionKey = llmSelectionKey(optionSelection)
               return (
                 <ModelOptionRow
                   key={optionKey}
                   option={option}
                   selected={optionKey === selectedKey}
                   onSelect={() => {
-                    onLocalAgentChange?.(null);
-                    onChange(optionSelection);
-                    setOpen(false);
-                    linger();
+                    onLocalAgentChange?.(null)
+                    onChange(optionSelection)
+                    setOpen(false)
+                    linger()
                   }}
                 />
-              );
+              )
             })}
           </div>
         </div>
       )}
     </div>
-  );
+  )
 }

@@ -15,6 +15,7 @@ it is only ever a clarifying question.
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import logging
 import re
 from typing import Any
@@ -23,6 +24,7 @@ from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.capabilities.protocol import PromptBlock
 from deeptutor.core.context import UnifiedContext
 from deeptutor.services.prompt.lookup import prompt_text as _prompt_text
+from deeptutor.tools.mastery_nav import MASTERY_NAV_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +74,57 @@ _PROMISE_TAIL_CHARS = 160
 # nothing after it is the most reliable evidence that the call never happened —
 # more reliable than recognising the wording, which varies every turn.
 _DANGLING_LEAD_IN_CHARS = frozenset(":：")
+
+# A bare instruction to pick from unseen choices is also a promise of a card.
+# #1508 ended with "四个选项，选一个。" after describing the objective, but
+# never called mastery_quiz, so no choices were available to the learner.
+_UNPOSTED_CHOICE_LEAD_IN_RE = re.compile(
+    r"(?:[两三四五六七八九十]|\d+)个选项[，,、:\s]*(?:请|你)?(?:选|挑)(?:一|1)个[。！？.!?]?\s*$|"
+    r"\b(?:three|four|\d+) (?:choices|options)[,:;\s]+(?:choose|pick|select) one[.!?]?\s*$",
+    re.IGNORECASE,
+)
+
+# Delivery claims can precede a long explanation, unlike the vague question
+# announcements above. Check clauses across the reply, but require both a
+# concrete card/question and a delivery verb rather than the word "card" alone.
+_CARD_DELIVERY_RE = re.compile(
+    r"(?:卡片|题卡|(?:这|那|一|下一)道题|题目)[^。！？\n，,；;]{0,24}"
+    r"(?:重开|开出来|(?:放|挂|贴|发)(?:上来|上去|出来|上了|好了)|"
+    r"(?:生成|展示)(?:了|好|出来)|(?:就)?在(?:下面|下方))|"
+    r"先探一题|"
+    r"\bI(?:['’]ve| have)? (?:just |now )?(?:posted|reopened|displayed) "
+    r"(?:the|a|this) (?:(?:question|quiz|answer) )?card\b|"
+    r"\b(?:the|this) (?:(?:question|quiz|answer) )?card "
+    r"(?:is|has been) (?:ready|posted|displayed|reopened|below)\b",
+    re.IGNORECASE,
+)
+_NON_DELIVERY_CLAUSE_RE = re.compile(
+    r"没有|没能|未能|尚未|还没|不会|不再|不要|不能|并未|无法|失败|"
+    r"上次|上一轮|刚才|之前|如果|假如|是否|你说|[吗？?]|^\s*等|"
+    r"\b(?:not|never|if|earlier|previously|yesterday)\b",
+    re.IGNORECASE,
+)
+_QUOTED_CARD_TEXT_RE = re.compile(
+    r"```.*?```|~~~.*?~~~|`[^`\n]*`|“[^”]*”|「[^」]*」|\"[^\"\n]*\"|^\s*>[^\n]*",
+    re.DOTALL | re.MULTILINE,
+)
+_CONDITIONAL_DELIVERY_RE = re.compile(
+    r"^\s*(?:等|如果|假如|(?:学|讲|看)完.{0,12}(?:以后|之后)|稍后|下一轮|"
+    r"if\b|when\b|after\b)",
+    re.IGNORECASE,
+)
+
+
+def _claims_card_delivery(text: str) -> bool:
+    """Recognise current delivery claims without treating quoted reports as actions."""
+    prose = _QUOTED_CARD_TEXT_RE.sub(" ", text)
+    for sentence in re.split(r"[。！\n]|(?<=[.!?])\s+", prose):
+        if _CONDITIONAL_DELIVERY_RE.search(sentence):
+            continue
+        for clause in re.split(r"[，,；;]", sentence):
+            if _CARD_DELIVERY_RE.search(clause) and not _NON_DELIVERY_CLAUSE_RE.search(clause):
+                return True
+    return False
 
 
 def _looks_like_plain_choice_quiz(text: str) -> bool:
@@ -206,12 +259,17 @@ class MasteryLoopCapability:
         if tool_name in MASTERY_TOOL_NAMES:
             updated = dict(kwargs)
             if tool_name == "mastery_quiz":
+                state["quiz_requested"] = True
                 state["quiz_awaiting_grade"] = True
                 updated["_end_turn_on_card"] = _card_end_marker(context)
             elif tool_name == "mastery_grade":
                 state["quiz_awaiting_grade"] = False
                 state["quiz_graded"] = True
             updated["_mastery_path_id"] = path_id
+            updated["_attached_kb_names"] = list(context.knowledge_bases)
+            updated["_inspected_image_hashes"] = list(
+                context.extension("source_visual_evidence").get("image_hashes", [])
+            )
             # Raw, not normalised: "this conversation never recorded a mode"
             # has to survive down to the tools, or every pre-modes conversation
             # (and every CLI / SDK turn, which pass none) would be enforced as
@@ -232,16 +290,27 @@ class MasteryLoopCapability:
                 # needing to know a turn context exists.
                 updated["_bind_active_path"] = _path_binder(context)
             return updated
+        if tool_name in MASTERY_NAV_TOOL_NAMES:
+            # The navigation tools stay mounted inside a mastery session —
+            # sending the learner to a *different* topic is a real thing to
+            # want mid-course. What they could not see is which topic this
+            # turn is already tutoring, so a hand-off card could point back at
+            # this very conversation's topic (#1412).
+            updated = dict(kwargs)
+            updated["_tutoring_path_id"] = path_id
+            return updated
         return kwargs
 
     def finish_instruction(self, context: UnifiedContext, final_text: str) -> str | None:
         """Catch a finish that leaves the learner with nothing to answer.
 
-        Only the *shape of the reply* can trigger this. Two states that read
-        like unfinished protocol are not:
+        A quiz selected in this turn must reach its success callback before
+        the turn can finish, regardless of reply wording or later grading.
+        Text heuristics are only a fallback for replies that never selected
+        the tool. Two other states are not an outstanding delivery:
 
-        ``mastery_quiz`` called without a grade no longer means the question
-        went unasked — that call now poses it on its own card — so a learner
+        A pending question from an earlier turn does not mean it went
+        unasked — it was already posed on its own card — so a learner
         who types a question instead of answering leaves the interaction open
         on purpose, and the tutor answering them is the right reply, not a
         skipped step.
@@ -262,7 +331,24 @@ class MasteryLoopCapability:
         if not self.is_active(context):
             return None
         state = context.extension("mastery")
-        if _announces_an_unposed_question(final_text):
+        if state.get("quiz_requested") and not state.get("card_posted"):
+            return (
+                "This turn selected mastery_quiz, but no question card was successfully "
+                "posted. Inspect the tool error and retry mastery_quiz with corrected "
+                "arguments. A prose reply or a grading call cannot complete the selected "
+                "question delivery. If delivery remains unsuccessful, this turn must "
+                "fail rather than report successful completion."
+            )
+        if not state.get("card_posted") and (
+            _announces_an_unposed_question(final_text)
+            or _claims_card_delivery(final_text)
+            or (
+                not state.get("quiz_awaiting_grade")
+                and _UNPOSTED_CHOICE_LEAD_IN_RE.search(final_text)
+            )
+        ):
+            # Argument binding sets quiz_awaiting_grade even when registration
+            # fails. Only the tool's success callback marks a card as posted.
             # "Let us see what you already know:" and then nothing. The learner
             # is left reading a promise with no card under it, and the turn is
             # over — this reply announced the question instead of posing it.
@@ -325,6 +411,48 @@ class MasteryLoopCapability:
         state["card_posted"] = False
         return ""
 
+    async def pre_loop(
+        self, context: UnifiedContext, stream: Any, *, usage: Any = None
+    ) -> PromptBlock | None:
+        """Read current state once before the first model call, without an LLM.
+
+        This is a fresh read for this turn, never a session cache. Reuse the
+        status tool so objective gates and pending answers have one authority.
+        The loop's pre-pass wrapper falls back to the tool on read failure.
+        """
+        if not self.is_active(context) or not context.metadata.get("mastery_path_id"):
+            return None
+        from deeptutor.capabilities.mastery.tools import MasteryStatusTool
+
+        binding = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        result = await MasteryStatusTool().execute(
+            **self.augment_kwargs("mastery_status", {}, context)
+        )
+        if not result.success:
+            return None
+        # A rebind during the read must not seed the new path with old state.
+        current = (
+            context.metadata.get("mastery_path_id"),
+            context.metadata.get("mastery_session_mode"),
+        )
+        if (
+            binding != current
+            or json.loads(result.content).get("path_id") != str(binding[0]).strip()
+        ):
+            return None
+        return PromptBlock(
+            "mastery_status_snapshot",
+            "[Current-turn mastery_status snapshot]\n"
+            "The runtime has already read mastery_status for this turn and active path. "
+            "Use this result directly; do not call mastery_status again just to begin. "
+            "Refresh with mastery_status after changing the path, mode, outline, or progress "
+            "when updated state is needed. Earlier turns' snapshots are historical only.\n"
+            + result.content,
+        )
+
     def pre_loop_seed(self, context: UnifiedContext) -> str:
         """Hand over whatever this turn already settled on the open card.
 
@@ -343,6 +471,25 @@ class MasteryLoopCapability:
         skipped = self._skip_seed(context)
         graded = self._grade_seed(context)
         return "\n\n".join(part for part in (skipped, graded) if part)
+
+    def skip_kb_seed(self, context: UnifiedContext) -> bool:
+        """Don't pre-search the knowledge base with a card answer.
+
+        The message of a card turn is the learner's pick ("A", "True") or a
+        declined question, not a question to look up. The engine grades it
+        against the stored key, and the tutor can still call ``rag`` with the
+        actual question if it needs the material.
+        """
+        if not self.is_active(context):
+            return False
+        meta = context.metadata
+        grade = meta.get("mastery_card_grade")
+        skip = meta.get("mastery_card_skip")
+        return bool(
+            meta.get("mastery_card_answered")
+            or (isinstance(grade, dict) and grade)
+            or (isinstance(skip, dict) and skip.get("skipped"))
+        )
 
     def _skip_seed(self, context: UnifiedContext) -> str:
         """State that the learner's declined question is already gone.

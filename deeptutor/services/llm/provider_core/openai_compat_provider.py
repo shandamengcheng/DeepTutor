@@ -45,7 +45,7 @@ from deeptutor.services.llm.request_compat import (
     is_forced_tool_choice_unsupported,
     is_response_format_unsupported,
 )
-from deeptutor.services.llm.usage_frame import token_counts
+from deeptutor.services.llm.usage_frame import usage_breakdown
 from deeptutor.services.provider_registry import model_overrides_for, normalize_wire_api
 from deeptutor.services.session.provider_response_state import (
     normalize_provider_response_state,
@@ -231,7 +231,8 @@ class OpenAICompatProvider(LLMProvider):
         if not self._key_pool:
             return await create(**kwargs)
         api_key = self._key_pool.next()
-        for attempt in range(2):
+        attempts = max(2, len(self._key_pool))
+        for attempt in range(attempts):
             request = dict(kwargs)
             headers = dict(request.get("extra_headers") or {})
             headers["Authorization"] = f"Bearer {api_key}"
@@ -242,7 +243,7 @@ class OpenAICompatProvider(LLMProvider):
                 if self._status_code(exc) != 429:
                     raise
                 self._key_pool.mark_429(api_key)
-                if attempt:
+                if attempt == attempts - 1:
                     raise
                 api_key = self._key_pool.next()
         raise RuntimeError("LLM key rotation exhausted")
@@ -276,6 +277,7 @@ class OpenAICompatProvider(LLMProvider):
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]] | None]:
         cache_marker = {"type": "ephemeral"}
         new_messages = list(messages)
+        budget = 4
 
         def _mark(msg: dict[str, Any]) -> dict[str, Any]:
             content = msg.get("content")
@@ -294,13 +296,15 @@ class OpenAICompatProvider(LLMProvider):
 
         if new_messages and new_messages[0].get("role") == "system":
             new_messages[0] = _mark(new_messages[0])
-        if len(new_messages) >= 3:
-            new_messages[-2] = _mark(new_messages[-2])
+            budget -= 1
+        if len(new_messages) >= 2:
+            new_messages[-1] = _mark(new_messages[-1])
+            budget -= 1
 
         new_tools = tools
         if tools:
             new_tools = list(tools)
-            for idx in cls._tool_cache_marker_indices(new_tools):
+            for idx in cls._tool_cache_marker_indices(new_tools)[:budget]:
                 new_tools[idx] = {**new_tools[idx], "cache_control": cache_marker}
         return new_messages, new_tools
 
@@ -321,7 +325,6 @@ class OpenAICompatProvider(LLMProvider):
         messages: list[dict[str, Any]],
         *,
         responses_api: bool = False,
-        model: str | None = None,
     ) -> list[dict[str, Any]]:
         prepared: list[dict[str, Any]] = []
         for message in messages:
@@ -338,15 +341,24 @@ class OpenAICompatProvider(LLMProvider):
                 if output_items:
                     clean["_provider_response_state"] = {"responses_output_items": output_items}
             else:
+                # Replay the round's own reasoning on the assistant turn that
+                # produced it. A thinking model's provider rejects a history
+                # that lost it ("the reasoning_content in the thinking mode
+                # must be passed back to the API"), and only a provider that
+                # SENT ``reasoning_content``/``reasoning`` can have put it in
+                # this state — so replaying it is symmetric, never additive.
+                #
+                # This used to be gated on ``"deepseek" in model``, which is
+                # not how a model announces the dialect: Volcengine Ark takes
+                # an endpoint id (``ep-…``) as the model name, and Doubao /
+                # GLM / Qwen / Kimi thinking models speak the same field under
+                # their own names. Every one of them lost its reasoning the
+                # moment a turn replayed history, while the *same* round
+                # inside one turn kept it (the loop sets the field directly).
                 state = normalize_provider_response_state(message.get("_provider_response_state"))
                 reasoning_content = state.get("reasoning_content") if state is not None else None
-                if (
-                    isinstance(reasoning_content, str)
-                    and reasoning_content
-                    and model
-                    and "deepseek" in model.lower()
-                ):
-                    clean["reasoning_content"] = reasoning_content
+                if isinstance(reasoning_content, str) and reasoning_content:
+                    clean.setdefault("reasoning_content", reasoning_content)
             prepared.append(clean)
 
         sanitized = LLMProvider._sanitize_request_messages(prepared, _ALLOWED_MSG_KEYS)
@@ -415,9 +427,7 @@ class OpenAICompatProvider(LLMProvider):
 
         kwargs: dict[str, Any] = {
             "model": model_name,
-            "messages": self._sanitize_messages(
-                self._sanitize_empty_content(messages), model=model_name
-            ),
+            "messages": self._sanitize_messages(self._sanitize_empty_content(messages)),
         }
 
         if self._supports_temperature(model_name, reasoning_effort):
@@ -719,9 +729,7 @@ class OpenAICompatProvider(LLMProvider):
             model_name = model_name.split("/")[-1]
 
         instructions, input_items = convert_messages(
-            self._sanitize_messages(
-                self._sanitize_empty_content(messages), responses_api=True, model=model_name
-            )
+            self._sanitize_messages(self._sanitize_empty_content(messages), responses_api=True)
         )
         body: dict[str, Any] = {
             "model": model_name,
@@ -734,6 +742,11 @@ class OpenAICompatProvider(LLMProvider):
 
         if self._supports_temperature(model_name, reasoning_effort):
             body["temperature"] = temperature
+        for key, value in model_overrides_for(model_name, self._spec).items():
+            if value is None:
+                body.pop(key, None)
+            else:
+                body[key] = value
         if reasoning_effort and reasoning_effort.lower() != "none":
             body["reasoning"] = {"effort": reasoning_effort}
             body["include"] = ["reasoning.encrypted_content"]
@@ -793,7 +806,7 @@ class OpenAICompatProvider(LLMProvider):
             usage_obj = response_map.get("usage")
         else:
             usage_obj = getattr(response, "usage", None)
-        return token_counts(usage_obj)
+        return usage_breakdown(usage_obj)
 
     def _parse(self, response: Any) -> LLMResponse:
         if isinstance(response, str):
@@ -816,8 +829,6 @@ class OpenAICompatProvider(LLMProvider):
                     finish_reason = ch.finish_reason
             if not content and m.content:
                 content = m.content
-            if not content and getattr(m, "reasoning", None):
-                content = m.reasoning
 
         tool_calls = []
         for tc in raw_tool_calls:
@@ -839,6 +850,12 @@ class OpenAICompatProvider(LLMProvider):
         reasoning_content = getattr(msg, "reasoning_content", None) or None
         if not reasoning_content and getattr(msg, "reasoning", None):
             reasoning_content = msg.reasoning
+
+        # ``reasoning`` is a private trace on gateways such as OpenRouter.  It
+        # must never be promoted to visible content when the provider omits a
+        # final answer (the old fallback here leaked untagged scratchpads).
+        if content and reasoning_content and content == reasoning_content:
+            content = None
 
         usage = self._extract_usage(response)
 

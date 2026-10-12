@@ -25,6 +25,7 @@ from .error_mapping import map_error
 from .multimodal import prepare_multimodal_messages
 from .provider_core.base import LLMProvider
 from .provider_factory import build_isolated_provider, get_runtime_provider
+from .types import StreamOutcome
 from .utils import is_local_llm_server
 
 DEFAULT_MAX_RETRIES = settings.retry.max_retries
@@ -398,6 +399,12 @@ async def _complete_with_resolved_config(
         raise map_error(
             RuntimeError(response.content or "LLM request failed"), provider=config.provider_name
         )
+    # Provider adapters keep hidden reasoning in ``reasoning_content``.  A
+    # few gateways duplicate that field into ``content`` when no visible
+    # answer is present; never let that duplicate become user-facing text.
+    if response.content and response.reasoning_content:
+        if response.content == response.reasoning_content:
+            return ""
     return response.content or ""
 
 
@@ -532,8 +539,16 @@ async def stream(
     retry_delay: float = DEFAULT_RETRY_DELAY,
     exponential_backoff: bool = DEFAULT_EXPONENTIAL_BACKOFF,
     allow_image_fallback: bool | None = None,
+    outcome: StreamOutcome | None = None,
     **kwargs: Any,
 ) -> AsyncGenerator[str, None]:
+    """Stream a completion as text chunks.
+
+    ``outcome``, when given, is filled with the provider's terminal reason and
+    usage once the stream ends. A caller that parses the streamed text needs it
+    to tell a complete response from one cut off at ``max_tokens`` (#1545).
+    """
+
     from deeptutor.capabilities.subagent.model_runtime import complete_with_selected_subagent
 
     direct_response = await complete_with_selected_subagent(
@@ -542,6 +557,8 @@ async def stream(
         messages=messages,
     )
     if direct_response is not None:
+        if outcome is not None:
+            outcome.finish_reason = "stop"
         yield direct_response
         return
 
@@ -614,7 +631,7 @@ async def stream(
         await queue.put(chunk)
 
     async def _runner() -> None:
-        nonlocal in_think_block
+        nonlocal saw_output, in_think_block
         try:
             response = await provider.chat_stream_with_retry(
                 messages=request_messages,
@@ -626,13 +643,19 @@ async def stream(
                 allow_image_fallback=image_fallback_enabled,
                 **extra_kwargs,
             )
+            if outcome is not None:
+                outcome.finish_reason = str(response.finish_reason or "")
+                outcome.usage = dict(response.usage or {})
             if in_think_block:
                 in_think_block = False
                 await queue.put("</think>")
             # Some providers synthesize a final response only after the stream.
-            # Do not replay reasoning_content as user-visible answer text.
+            # Do not replay reasoning_content as user-visible answer text, and
+            # never surface an error-shaped response's operator message as if
+            # the model had written it: that case is raised below instead.
             if (
-                not saw_content
+                response.finish_reason != "error"
+                and not saw_content
                 and response.content
                 and response.content != response.reasoning_content
             ):
@@ -730,6 +753,11 @@ async def fetch_models(
     api_key: str | None = None,
     api_format: str = "auto",
 ) -> list[str]:
+    if canonical_provider_name(binding) == "github_copilot":
+        from deeptutor.services.github_copilot_auth import list_github_copilot_models
+
+        return await list_github_copilot_models()
+
     if canonical_provider_name(binding) == "codebuddy":
         from .provider_core.codebuddy_models import fetch_codebuddy_models
 

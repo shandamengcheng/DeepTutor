@@ -34,9 +34,7 @@ async def test_topic_draft_uses_the_sole_local_agent_without_global_llm(monkeypa
                     "modules": [
                         {
                             "name": "Foundations",
-                            "knowledge_points": [
-                                {"name": "Core idea", "type": "concept"}
-                            ],
+                            "knowledge_points": [{"name": "Core idea", "type": "concept"}],
                         }
                     ],
                 }
@@ -51,9 +49,7 @@ async def test_topic_draft_uses_the_sole_local_agent_without_global_llm(monkeypa
         "deeptutor.capabilities.subagent.direct.consult_selected_subagent",
         consult_selected_subagent,
     )
-    monkeypatch.setattr(
-        "deeptutor.api.routers.mastery_path.get_response_language", lambda: "en"
-    )
+    monkeypatch.setattr("deeptutor.api.routers.mastery_path.get_response_language", lambda: "en")
     monkeypatch.setattr(
         "deeptutor.services.llm.config.get_llm_config",
         lambda: (_ for _ in ()).throw(AssertionError("global LLM must not resolve")),

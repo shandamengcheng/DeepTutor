@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CommandDeliveryError } from "../features/chat/transport/command-delivery";
 
 import {
   buildCancelTurn,
@@ -385,5 +386,51 @@ test("stopping releases waiters that will never be acknowledged", async () => {
   );
   client.stop();
 
-  assert.equal(await verdict, false);
+  await assert.rejects(verdict, CommandDeliveryError);
+});
+
+test("missing reply ACK times out without a false server rejection or delayed send", async () => {
+  const { client, sockets, scheduler } = harness();
+  client.connect();
+  const verdict = client.sendAwaitingAck(
+    buildSubmitUserReply({ turnId: "turn-1", text: "B", commandId: "unconfirmed" }),
+  );
+  const rejected = assert.rejects(verdict, CommandDeliveryError);
+  scheduler.runNext();
+  await rejected;
+  sockets[0].open();
+  assert.equal(sockets[0].sent.some((item) => item.type === "submit_user_reply"), false);
+  client.stop();
+  assert.equal(scheduler.tasks.length, 0);
+});
+
+
+test("acknowledged commands get a generated command_id when crypto.randomUUID is unavailable", () => {
+  const original = globalThis.crypto?.randomUUID;
+  const cryptoObject = globalThis.crypto as {
+    randomUUID?: typeof globalThis.crypto.randomUUID;
+  };
+  if (cryptoObject) cryptoObject.randomUUID = undefined;
+  try {
+    const { client, sockets } = harness();
+    client.connect();
+    sockets[0].open();
+    client.send(
+      buildSubmitUserReply({
+        turnId: "turn-1",
+        text: "A",
+        answers: [{ questionId: "q", text: "B" }],
+      }),
+    );
+    const sent = sockets[0].sent.find(
+      (item) => item.type === "submit_user_reply",
+    ) as Record<string, unknown>;
+    assert.ok(sent, "submit_user_reply should be sent");
+    assert.match(
+      String(sent.command_id),
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  } finally {
+    if (cryptoObject) cryptoObject.randomUUID = original;
+  }
 });

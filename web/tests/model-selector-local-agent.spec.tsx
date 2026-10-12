@@ -176,7 +176,7 @@ describe("ModelSelector local Agent targets", () => {
     );
 
     await user.click(screen.getByRole("button", { name: "Select model" }));
-    await user.click(screen.getByRole("button", { name: /gpt-test/i }));
+    await user.click(screen.getByRole("button", { name: /GPT Test/i }));
 
     expect(onLocalAgentChange).toHaveBeenCalledWith(null);
     expect(onChange).toHaveBeenCalledWith({

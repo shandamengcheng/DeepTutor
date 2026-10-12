@@ -61,7 +61,8 @@ def selected_subagent_is_active() -> bool:
         return False
     from deeptutor.capabilities.subagent.binding import connection_for_turn
 
-    return connection_for_turn(context) is not None
+    connection = connection_for_turn(context)
+    return connection is not None and connection["kind"] not in {"partner", "partner_group"}
 
 
 def _content_text(content: Any) -> str:
@@ -149,7 +150,7 @@ async def complete_with_selected_subagent(
     """
 
     context = _turn_context.get()
-    if context is None:
+    if context is None or not selected_subagent_is_active():
         return None
 
     from deeptutor.capabilities.subagent.direct import consult_selected_subagent
@@ -163,7 +164,9 @@ async def complete_with_selected_subagent(
     if result is None:
         return None
     if not result.success:
-        raise RuntimeError(result.error or "Selected local agent did not complete the model request")
+        raise RuntimeError(
+            result.error or "Selected local agent did not complete the model request"
+        )
     if not result.final_text:
         raise RuntimeError("Selected local agent produced no model response")
     return result.final_text

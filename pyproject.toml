@@ -30,6 +30,7 @@ dependencies = [
     "tenacity>=8.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "packaging>=24.2",
     "jsonschema>=4.20.0,<5.0.0",
     "aiosqlite>=0.19.0",
     "typer>=0.9.0",
@@ -41,6 +42,12 @@ dependencies = [
     # install must be able to connect them without an optional extra.
     "mcp>=1.26.0,<2.0.0",
     "pageindex>=0.2.10,<0.3.0",
+    # Partner channel QR onboarding (WeChat, WeCom, Feishu). Same reasoning as
+    # `mcp` above: scan-based onboarding is part of the default partner setup
+    # surface, it is pure Python with no compiled or system dependencies, and
+    # without it the browser renders no code at all — the operator sees a
+    # button that does nothing, with no error to explain why.
+    "qrcode>=7.4.0,<9.0.0",
     # Full app dependencies included by default for `pip install deeptutor`.
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -58,6 +65,7 @@ dependencies = [
     "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
     "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
     "PyMuPDF>=1.26.0",
+    "Pillow>=10.0.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",
     "python-docx>=1.1.0",
@@ -101,6 +109,7 @@ translation = "deeptutor.reading.translation:TranslationExtension"
 # already included in the public `deeptutor` wheel; the local CLI-only project
 # under `packaging/deeptutor-cli` uses the same list without Web assets/server deps.
 cli = [
+    "packaging>=24.2",
     # LLM provider SDKs
     "anthropic>=0.30.0",
     "dashscope>=1.14.0",
@@ -117,6 +126,7 @@ cli = [
     "faiss-cpu>=1.8.0,<2.0.0; python_version < '3.14'",
     "faiss-cpu>=1.12.0,<2.0.0; python_version >= '3.14'",
     "PyMuPDF>=1.26.0",
+    "Pillow>=10.0.0",
     "numpy>=1.24.0,<3.0.0",
     "arxiv>=2.0.0",
     # Document text extraction (chat attachments) + office-skill authoring libs
@@ -191,8 +201,6 @@ partners = [
     "aiohttp>=3.10.0,<4.0.0",
     # msteams Bot Framework token validation
     "PyJWT[crypto]>=2.8.0,<3.0.0",
-    # weixin QR-code login
-    "qrcode>=7.4.0,<9.0.0",
 ]
 
 # Optional document-parsing engines for the shared parse layer
@@ -475,6 +483,7 @@ markers = [
     "asyncio: mark async tests that require pytest-asyncio",
     "integration: requires explicitly configured external services",
     "redis_integration: requires DEEPTUTOR_TEST_REDIS_URL",
+    "real_llm_resolver: exercises LLM config resolution itself, so it keeps the real resolver",
 ]
 asyncio_default_fixture_loop_scope = "function"
 addopts = [

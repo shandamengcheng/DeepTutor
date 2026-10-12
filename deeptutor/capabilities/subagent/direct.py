@@ -61,7 +61,7 @@ async def consult_selected_subagent(
     """
 
     connection = connection_for_turn(context)
-    if connection is None:
+    if connection is None or connection["kind"] in {"partner", "partner_group"}:
         return None
 
     from deeptutor.services.subagent import get_backend, load_subagent_settings

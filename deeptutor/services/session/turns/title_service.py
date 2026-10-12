@@ -127,11 +127,11 @@ class SessionTitleService:
             if subagent_result is not None:
                 raw_title = subagent_result.final_text if subagent_result.success else ""
             else:
-                from deeptutor.services.model_selection.tasks import task_llm_scope
+                from deeptutor.services.model_selection.tasks import TaskKind, task_llm_scope
 
                 # The scope is entered before the task is created so `wait_for`'s
                 # inner task copies it; with no task model configured it is a no-op.
-                with task_llm_scope():
+                with task_llm_scope(TaskKind.SESSION_TITLE):
                     raw_title = await asyncio.wait_for(_collect_title(), timeout=20.0)
             if _looks_like_error_payload(raw_title):
                 logger.debug("Title model streamed an error payload — falling back")

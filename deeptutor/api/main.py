@@ -5,7 +5,7 @@ import sys
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from deeptutor.logging import configure_logging
 from deeptutor.services.config import (
@@ -152,6 +152,15 @@ async def lifespan(app: FastAPI):
             len(migration_reports["workspace_preferences"]),
         )
 
+    try:
+        from deeptutor.learning.assessment import reconcile_linked_assessments
+
+        recovered, failed = await reconcile_linked_assessments()
+        if recovered or failed:
+            logger.info("Linked assessment recovery: recovered=%s failed=%s", recovered, failed)
+    except Exception:
+        logger.exception("Failed to reconcile linked assessments at startup")
+
     # Initialize LLM client early so OPENAI_* env vars are available before
     # any downstream provider integrations start.
     try:
@@ -202,6 +211,20 @@ async def lifespan(app: FastAPI):
         from deeptutor.services.github_source.sync_service import get_sync_service
 
         await get_sync_service().stop()
+
+    async def _start_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            start_web_source_sync_scheduler,
+        )
+
+        await start_web_source_sync_scheduler()
+
+    async def _stop_web_source_sync() -> None:
+        from deeptutor.services.web_source.scheduler import (
+            stop_web_source_sync_scheduler,
+        )
+
+        await stop_web_source_sync_scheduler()
 
     from deeptutor.runtime.coordination import BackgroundCommandKind
 
@@ -268,8 +291,18 @@ async def lifespan(app: FastAPI):
     background_supervisor = BackgroundLeaderSupervisor(
         application_container.coordinator,
         application_container.worker_id,
-        start_callbacks=[_start_partners, _start_cron, _start_github_sync],
-        stop_callbacks=[_stop_partners, _stop_cron, _stop_github_sync],
+        start_callbacks=[
+            _start_partners,
+            _start_cron,
+            _start_github_sync,
+            _start_web_source_sync,
+        ],
+        stop_callbacks=[
+            _stop_partners,
+            _stop_cron,
+            _stop_github_sync,
+            _stop_web_source_sync,
+        ],
         recovery_callback=application_container.recover_once,
         control_callback=_handle_background_command,
         renew_interval_seconds=application_container.settings.renew_interval_seconds,
@@ -366,6 +399,8 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Failed to stop EventBus: {e}")
 
 
+from deeptutor.services.workspace.activity import WorkspaceActivityMiddleware
+
 app = FastAPI(
     title="DeepTutor API",
     version="1.0.0",
@@ -376,6 +411,7 @@ app = FastAPI(
     # See: https://github.com/HKUDS/DeepTutor/issues/112
     redirect_slashes=False,
 )
+app.add_middleware(WorkspaceActivityMiddleware)
 
 
 @app.middleware("http")
@@ -435,6 +471,17 @@ if not any(getattr(h, "_deeptutor_access_handler", False) for h in _access_logge
 @app.middleware("http")
 async def selective_access_log(request, call_next):
     response = await call_next(request)
+    # An expired app login must not strand provider credentials in a callback URL.
+    # Authentication still runs normally; only its failure presentation changes.
+    if (
+        request.url.path == "/api/video-learning/invidious/account/callback"
+        and response.status_code in {401, 403}
+    ):
+        response = RedirectResponse(
+            "/reading?account=authorization_login_required",
+            status_code=303,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+        )
     if response.status_code != 200:
         _access_logger.info(
             '%s - "%s %s HTTP/%s" %d',
@@ -486,8 +533,10 @@ from deeptutor.api.routers import (
     co_writer,
     courses,
     dashboard,
+    file_preview,
     imports,
     knowledge,
+    learning_journal,
     marginnote4,
     mastery_path,
     mcp_settings,
@@ -497,6 +546,8 @@ from deeptutor.api.routers import (
     partner_groups,
     partners,
     personas,
+    plugins,
+    practice,
     question,
     question_notebook,
     quiz_judge,
@@ -509,6 +560,7 @@ from deeptutor.api.routers import (
     space_mcp,
     subagents,
     system,
+    task_board,
     unified_ws,
     video_learning,
     visualizers,
@@ -518,6 +570,7 @@ from deeptutor.api.routers import (
 from deeptutor.api.routers import (
     tools as tools_router,
 )
+from deeptutor.api.routers.file_library import router as file_library_router  # noqa: E402
 from deeptutor.api.routers.multi_user import router as multi_user_router  # noqa: E402
 
 # Auth router is public — login/logout/register/status require no token
@@ -533,6 +586,7 @@ app.include_router(
 # require_auth is a no-op when AUTH_ENABLED=false, so this is safe for local use.
 from deeptutor.api.routers.auth import (  # noqa: E402
     require_admin,
+    require_auth,
     require_learning_surface,
 )
 
@@ -548,9 +602,14 @@ app.include_router(
     tags=["multi-user"],
     dependencies=_auth,
 )
-
 app.include_router(question.router, prefix="/api/question", tags=["question"], dependencies=_auth)
 app.include_router(knowledge.router, prefix="/api", tags=["knowledge-bases"], dependencies=_auth)
+app.include_router(
+    file_preview.router,
+    prefix="/api/file-preview",
+    tags=["file-preview"],
+    dependencies=[Depends(require_auth)],
+)
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"], dependencies=_auth)
 app.include_router(
     dashboard.router, prefix="/api/dashboard", tags=["dashboard"], dependencies=_auth
@@ -559,6 +618,12 @@ app.include_router(
     mastery_path.router,
     prefix="/api/mastery-paths",
     tags=["mastery-path"],
+    dependencies=_auth,
+)
+app.include_router(
+    file_library_router,
+    prefix="/files/library",
+    tags=["library"],
     dependencies=_auth,
 )
 # WebSocket handlers authenticate inside the connection before ``accept``.
@@ -573,6 +638,9 @@ app.include_router(
 )
 app.include_router(co_writer.router, prefix="/api", tags=["documents"], dependencies=_auth)
 app.include_router(notebook.router, prefix="/api", tags=["notebooks"], dependencies=_auth)
+app.include_router(
+    task_board.router, prefix="/api/task-board", tags=["task-board"], dependencies=_auth
+)
 app.include_router(book.router, prefix="/api", tags=["books"], dependencies=_auth)
 app.include_router(book.ws_router, prefix="/ws", tags=["books"])
 app.include_router(reading.router, prefix="/api/reading", tags=["reading"], dependencies=_auth)
@@ -583,6 +651,12 @@ app.include_router(
     dependencies=_auth,
 )
 app.include_router(memory.router, prefix="/api/memory", tags=["memory"], dependencies=_auth)
+app.include_router(
+    learning_journal.router,
+    prefix="/api/learning-journal",
+    tags=["learning-journal"],
+    dependencies=_auth,
+)
 app.include_router(
     capabilities_settings.router,
     prefix="/api/capabilities",
@@ -601,6 +675,12 @@ app.include_router(
     question_notebook.router,
     prefix="/api/question-notebook",
     tags=["question-notebook"],
+    dependencies=_auth,
+)
+app.include_router(
+    practice.router,
+    prefix="/api/question-notebook/practice",
+    tags=["practice"],
     dependencies=_auth,
 )
 # Public UI-settings read (auth pages bootstrap the interface language
@@ -656,6 +736,7 @@ app.include_router(
     subagents.router, prefix="/api/subagents", tags=["subagents"], dependencies=_auth
 )
 app.include_router(personas.router, prefix="/api", tags=["personas"], dependencies=_auth)
+app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
 app.include_router(tools_router.router, prefix="/api/tools", tags=["tools"], dependencies=_auth)
 app.include_router(system.router, prefix="/api/system", tags=["system"], dependencies=_auth)
 app.include_router(voice.router, prefix="/api/voice", tags=["voice"], dependencies=_auth)
