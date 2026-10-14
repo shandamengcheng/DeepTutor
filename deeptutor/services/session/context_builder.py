@@ -23,6 +23,7 @@ from .ask_user_trace import (
 from .model_history import history_groups, model_turn, replay_history
 from .protocol import SessionStoreProtocol
 from .provider_response_state import normalize_provider_response_state
+from .token_encoding import get_local_token_encoding
 
 #: When the summarizer's output lands within this fraction of its hard token
 #: cap, assume the provider cut it mid-sentence and trim the partial tail.
@@ -47,16 +48,16 @@ IMAGE_CONTEXT_TOKEN_ESTIMATE = 4096
 
 
 def count_tokens(text: str) -> int:
-    """Estimate token count with tiktoken when available."""
+    """Estimate tokens with a local vocabulary, without downloading on a turn."""
     if not text:
         return 0
     try:
-        import tiktoken
-
-        encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
+        encoding = get_local_token_encoding()
+        if encoding is not None:
+            return len(encoding.encode(text))
     except Exception:
-        return max(1, len(text) // 4)
+        pass
+    return max(1, len(text) // 4)
 
 
 def _count_model_context_tokens(value: Any) -> int:

@@ -25,6 +25,7 @@ from deeptutor.services.llm.context_window import (
     known_context_window,
     resolve_effective_context_window,
 )
+from deeptutor.services.session.token_encoding import get_local_token_encoding
 
 logger = logging.getLogger(__name__)
 
@@ -108,17 +109,11 @@ def resolve_window_info(
 def detect_counter_name() -> str:
     """Name of the tokenizer ``count_tokens`` will actually use in this process.
 
-    ``count_tokens`` swallows a missing or broken tiktoken and silently drops to
-    a chars/4 estimate; probing the same import keeps the reported counter from
-    claiming an accuracy the numbers do not have.
+    ``count_tokens`` uses a chars/4 estimate when the local vocabulary is
+    unavailable. Checking the same local loader keeps the reported counter
+    consistent without initiating a synchronous download.
     """
-    try:
-        import tiktoken
-
-        tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        return "heuristic"
-    return "cl100k_base"
+    return "cl100k_base" if get_local_token_encoding() is not None else "heuristic"
 
 
 def count_conversation_tokens(
