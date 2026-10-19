@@ -13411,6 +13411,30 @@
         ],
         "title": "ProgressRequest",
         "type": "object"
+      },
+      "TranslateVideoCueRequest": {
+        "properties": {
+          "cue_index": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Cue Index",
+            "type": "integer"
+          },
+          "target_language": {
+            "enum": [
+              "zh",
+              "en"
+            ],
+            "title": "Target Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cue_index",
+          "target_language"
+        ],
+        "title": "TranslateVideoCueRequest",
+        "type": "object"
       }
     }
   },
@@ -64224,6 +64248,93 @@
           }
         },
         "summary": "Health Ready"
+      }
+    },
+    "/api/video-learning/materials/{material_id}/transcript/translate": {
+      "post": {
+        "description": "Translate one server-verified cue, never arbitrary browser text.",
+        "operationId": "translate_video_cue_api_video_learning_materials__material_id__transcript_translate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "material_id",
+            "required": true,
+            "schema": {
+              "title": "Material Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "dt_token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dt Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranslateVideoCueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Translate Video Cue Api Video Learning Materials  Material Id  Transcript Translate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Translate Video Cue",
+        "tags": [
+          "video-learning"
+        ]
       }
     }
   },

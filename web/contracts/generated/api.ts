@@ -10594,6 +10594,26 @@ export interface paths {
     readonly patch?: never;
     readonly trace?: never;
   };
+  readonly "/api/video-learning/materials/{material_id}/transcript/translate": {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: never;
+      readonly path?: never;
+      readonly cookie?: never;
+    };
+    readonly get?: never;
+    readonly put?: never;
+    /**
+     * Translate Video Cue
+     * @description Translate one server-verified cue, never arbitrary browser text.
+     */
+    readonly post: operations["translate_video_cue_api_video_learning_materials__material_id__transcript_translate_post"];
+    readonly delete?: never;
+    readonly options?: never;
+    readonly head?: never;
+    readonly patch?: never;
+    readonly trace?: never;
+  };
   readonly "/api/video-learning/materials/resolve": {
     readonly parameters: {
       readonly query?: never;
@@ -16061,6 +16081,16 @@ export interface components {
         readonly [key: string]: string;
       } | null;
     };
+    /** TranslateVideoCueRequest */
+    readonly TranslateVideoCueRequest: {
+      /** Cue Index */
+      readonly cue_index: number;
+      /**
+       * Target Language
+       * @enum {string}
+       */
+      readonly target_language: "zh" | "en";
+    };
     /**
      * TTSRequest
      * @description Text-to-speech request body.
@@ -17670,6 +17700,8 @@ export type SchemaTopicSourceRequest =
   components["schemas"]["TopicSourceRequest"];
 export type SchemaTourCompletePayload =
   components["schemas"]["TourCompletePayload"];
+export type SchemaTranslateVideoCueRequest =
+  components["schemas"]["TranslateVideoCueRequest"];
 export type SchemaTtsRequest = components["schemas"]["TTSRequest"];
 export type SchemaTurnFailureCode = components["schemas"]["TurnFailureCode"];
 export type SchemaTurnQueryState = components["schemas"]["TurnQueryState"];
@@ -41378,6 +41410,47 @@ export interface operations {
       };
     };
     readonly requestBody?: never;
+    readonly responses: {
+      /** @description Successful Response */
+      readonly 200: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": {
+            readonly [key: string]: unknown;
+          };
+        };
+      };
+      /** @description Validation Error */
+      readonly 422: {
+        headers: {
+          readonly [name: string]: unknown;
+        };
+        content: {
+          readonly "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  readonly translate_video_cue_api_video_learning_materials__material_id__transcript_translate_post: {
+    readonly parameters: {
+      readonly query?: never;
+      readonly header?: {
+        readonly Authorization?: string | null;
+      };
+      readonly path: {
+        readonly material_id: string;
+      };
+      readonly cookie?: {
+        readonly dt_token?: string | null;
+      };
+    };
+    readonly requestBody: {
+      readonly content: {
+        readonly "application/json": components["schemas"]["TranslateVideoCueRequest"];
+      };
+    };
     readonly responses: {
       /** @description Successful Response */
       readonly 200: {
