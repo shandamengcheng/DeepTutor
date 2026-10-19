@@ -1043,6 +1043,10 @@ body[data-picker-open] .dt-breathing-text {
    bleeds back on screen and its contents drop out of the tab order. The
    shadow is constant rather than toggled, so nothing pops at either end. */
 .dt-viewer-panel {
+  /* Glass cards need an opaque backing when they overlay the conversation. */
+  background-image:
+    linear-gradient(var(--card), var(--card)),
+    linear-gradient(var(--background), var(--background));
   transform: translateX(calc(100% + var(--viewer-inset)));
   visibility: hidden;
   transition:

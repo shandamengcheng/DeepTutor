@@ -695,7 +695,11 @@ export function MasteryStudy({
           />
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col bg-[var(--background)]">
+        <section
+          data-preview-open="false"
+          data-viewer-open={viewerOpen ? "true" : "false"}
+          className="chat-preview-shell flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--background)]"
+        >
           <div className="relative min-h-0 flex-1">
             <div
               ref={messagesContainerRef}
