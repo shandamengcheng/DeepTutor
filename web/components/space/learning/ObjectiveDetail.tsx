@@ -12,9 +12,8 @@ import { formatAbsolute, formatRelative, type Translate } from "./format";
  *
  * The map answers "am I through the gate"; this answers "why" — which
  * questions were asked, what the learner said, what the engine did with it,
- * and when it comes back for review. The gate itself is shown as a bar with
- * the threshold marked, because a hard gate is only legible if you can see how
- * far away it is.
+ * and when it comes back for review. Rubric progress shows demonstrated
+ * understanding; mastery verification remains a separate final decision.
  */
 export function ObjectiveDetail({
   report,
@@ -29,7 +28,7 @@ export function ObjectiveDetail({
   const evidenceCount = report.evidence_count ?? evidence.length;
   return (
     <div className="mt-1 mb-2 ml-5 space-y-3 border-l border-[var(--border)] pl-3">
-      <GateBar report={report} />
+      <LearningProgress report={report} />
 
       {report.review && (
         <Row label={t("Spaced review")}>
@@ -161,70 +160,85 @@ export function ObjectiveDetail({
   );
 }
 
-/** Mastery against the gate it has to clear. */
-function GateBar({ report }: { report: ObjectiveReport }) {
+/** Learning evidence and the final mastery decision are separate signals. */
+function LearningProgress({ report }: { report: ObjectiveReport }) {
   const { t } = useTranslation();
   const qualitative = report.gate === "qualitative";
-  // A qualitative gate is a boolean, so all-or-nothing is the only honest
-  // fill. `mastery` carries quiz accuracy for these objectives too, and
-  // drawing that as gate progress is how a waypoint comes to show a full bar
-  // beside a hollow dot — the learner reads "100%, still not cleared".
+  const criteria = qualitative ? report.qualitative_assessment?.criteria ?? [] : [];
+  const met = criteria.filter(item => item.status === "met").length;
   const pct = qualitative
-    ? report.mastered
-      ? 100
-      : 0
+    ? criteria.length > 0
+      ? Math.round(met / criteria.length * 100)
+      : report.assessed_mastered ? 100 : null
     : Math.round(report.mastery * 100);
-  const thresholdPct = Math.round(report.threshold * 100);
-  const perfectButBelowGate =
-    report.gate === "quantitative" &&
-    report.attempts.length > 0 &&
-    report.correct_count === report.attempts.length &&
-    report.mastery < report.threshold;
+  const hasAssessment = Boolean(report.explanation || report.attempts.length || report.evidence_count || report.evidence?.length);
+  const verdict = report.assessed_mastered
+    ? t("Mastery verified")
+    : report.mastery_source === "learner"
+      ? t("Self-marked; not yet verified")
+      : hasAssessment || criteria.length > 0
+        ? t("Not yet passed")
+        : t("Awaiting assessment");
+  const perfectButBelowGate = !qualitative && report.attempts.length > 0 &&
+    report.correct_count === report.attempts.length && report.mastery < report.threshold;
+
   return (
-    <div>
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="text-[var(--muted-foreground)]">
-          {report.gate === "qualitative"
-            ? t("Qualitative gate: explain it in your own words")
-            : t("Quantitative gate: {{pct}}%", { pct: thresholdPct })}
-        </span>
-        <span
-          className={
-            report.mastered
-              ? "text-green-500"
-              : "text-[var(--muted-foreground)]"
-          }
-        >
-          {pct}%
-        </span>
-      </div>
-      <div className="relative mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[var(--accent)]">
-        <div
-          className={`h-full ${report.mastered ? "bg-[var(--primary)]" : "bg-[var(--muted-foreground)]"}`}
-          style={{ width: `${pct}%` }}
-        />
-        {report.gate === "quantitative" && (
-          <div
-            className="absolute inset-y-0 w-px bg-[var(--foreground)]/40"
-            style={{ left: `${thresholdPct}%` }}
-          />
+    <div className="space-y-3">
+      <div>
+        <div className="flex items-baseline justify-between gap-3 text-xs">
+          <span className="font-medium">{t("Learning progress")}</span>
+          <span className="text-[var(--muted-foreground)]">
+            {pct === null
+              ? hasAssessment ? t("Feedback recorded; awaiting criteria assessment") : t("Awaiting assessment")
+              : `${pct}%`}
+          </span>
+        </div>
+        {pct !== null && (
+          <div role="progressbar" aria-label={t("Learning progress")} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+            className="relative mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--accent)]">
+            <div className="h-full bg-[var(--primary)] transition-[width]" style={{ width: `${pct}%` }} />
+          </div>
+        )}
+        {criteria.length > 0 && (
+          <>
+            <p className="mt-1.5 text-[11px] text-[var(--muted-foreground)]">
+              {t("{{met}} of {{total}} assessment criteria met", { met, total: criteria.length })}
+            </p>
+            <ul className="mt-2 space-y-2 text-xs">
+              {criteria.map(item => (
+                <li key={item.name}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span>{item.name}</span>
+                    <span className={item.status === "met" ? "shrink-0 text-green-500" : "shrink-0 text-[var(--muted-foreground)]"}>
+                      {t(item.status === "met" ? "Criterion met" : item.status === "needs_work" ? "Needs more work" : "Not yet assessed")}
+                    </span>
+                  </div>
+                  {item.evidence && <p className="mt-0.5 text-[var(--muted-foreground)]">{item.evidence}</p>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {perfectButBelowGate && (
+          <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-foreground)]">
+            {t("Even with {{correct}}/{{total}} correct so far, mastery also weighs evidence volume, difficulty, and recent consistency. One more discriminating practice can raise it further.", { correct: report.correct_count, total: report.attempts.length })}
+          </p>
         )}
       </div>
-      {perfectButBelowGate && (
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-foreground)]">
-          {t(
-            "Even with {{correct}}/{{total}} correct so far, mastery also weighs evidence volume, difficulty, and recent consistency. One more discriminating practice can raise it further.",
-            { correct: report.correct_count, total: report.attempts.length },
-          )}
+      <div className="border-t border-[var(--border)] pt-2 text-xs">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="font-medium">{t("Mastery verification")}</span>
+          <span className={report.assessed_mastered ? "text-green-500" : "text-[var(--muted-foreground)]"}>{verdict}</span>
+        </div>
+        <p className="mt-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
+          {qualitative ? t("Qualitative gate: explain it in your own words") : t("Quantitative gate: {{pct}}%", { pct: Math.round(report.threshold * 100) })}
         </p>
-      )}
-      {qualitative && !report.mastered && report.attempts.length > 0 && (
-        <p className="mt-1.5 text-[11px] leading-4 text-[var(--muted-foreground)]">
-          {t(
-            "Practice questions do not open this gate — it opens when you explain the idea in your own words and your tutor records that. Your answers here still count as practice.",
-          )}
-        </p>
-      )}
+        {qualitative && !report.assessed_mastered && (
+          <p className="mt-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
+            {t("Learning progress records demonstrated criteria. Mastery requires a complete, independent explanation.")}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

@@ -462,6 +462,24 @@ def _review_report(
     }
 
 
+def qualitative_assessment(progress: LearningProgress, kp_id: str) -> dict | None:
+    """Latest assessment only: review strength and quiz accuracy are not rubric progress."""
+    latest = next(
+        (
+            event
+            for event in reversed(progress.learning_evidence)
+            if event.knowledge_point_id == kp_id and event.assessment_type == "qualitative"
+        ),
+        None,
+    )
+    if latest is None or not latest.criteria:
+        return None
+    return {
+        "criteria": [item.model_dump() for item in latest.criteria],
+        "assessed_at": latest.timestamp,
+    }
+
+
 def objective_report(
     progress: LearningProgress, kp_id: str, *, now: float | None = None
 ) -> dict | None:
@@ -517,6 +535,7 @@ def objective_report(
         # The learner's own words, kept as the evidence behind a qualitative pass.
         "explanation": progress.feynman_explanations.get(kp_id, ""),
         "explained": progress.explained_objectives.get(kp_id),
+        "qualitative_assessment": qualitative_assessment(progress, kp_id),
         "required_visual_tasks": kp.required_visual_tasks,
         "demonstrated_visual_tasks": visual_achievements(progress, kp_id),
         "review": _review_report(progress, kp_id, state, due_at, now=moment),

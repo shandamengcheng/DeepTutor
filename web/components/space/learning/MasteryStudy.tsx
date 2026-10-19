@@ -63,6 +63,7 @@ import { LevelUpCelebration } from "./LevelUpCelebration";
 import { MasteryComposer } from "./MasteryComposer";
 import { ProgressRing } from "./ProgressRing";
 import { StudyOutline } from "./StudyOutline";
+import { SectionCompletionDialog } from "./SectionCompletionDialog";
 
 const OUTLINE_STORAGE_KEY = "dt.mastery.outline";
 
@@ -861,6 +862,7 @@ export function MasteryStudy({
         </section>
       </div>
 
+      <SectionCompletionDialog key={pathId} topic={topic?.path_id === pathId ? topic : null} />
       {celebration && (
         <LevelUpCelebration
           key={celebration.key}

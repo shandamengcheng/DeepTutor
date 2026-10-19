@@ -41,17 +41,35 @@ function report(overrides: Partial<ObjectiveReport> = {}): ObjectiveReport {
 }
 
 describe("objective gate bar", () => {
-  it("does not draw quiz accuracy as progress toward a qualitative gate", () => {
-    // The reading that made this necessary: mastery 1.0 against threshold 1.0
-    // on an objective that is not mastered. Shown as a bar it says "full, yet
-    // not cleared" — beside an outline dot that is correctly still hollow.
-    render(<ObjectiveDetail report={report()} zh={false} />);
+  it("does not invent percentages for legacy qualitative feedback", () => {
+    render(<ObjectiveDetail report={report({ explanation: "Good boundaries, but persistence needs work." })} zh={false} />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText("0%")).toBeNull();
+    expect(screen.getByText("Feedback recorded; awaiting criteria assessment")).toBeTruthy();
+    expect(screen.getByText("Not yet passed")).toBeTruthy();
+  });
 
-    expect(screen.getByText("0%")).toBeTruthy();
+  it("shows actual rubric progress separately from mastery verification", () => {
+    render(<ObjectiveDetail report={report({ qualitative_assessment: {
+      assessed_at: 1_700_000_000,
+      criteria: [
+        { name: "Controller boundaries", status: "met", evidence: "Routes requests, no business rules." },
+        { name: "Service boundaries", status: "met", evidence: "Coordinates the use case." },
+        { name: "Domain boundaries", status: "met", evidence: "Enforces valid state changes." },
+        { name: "Persistence boundaries", status: "needs_work", evidence: "Assigned order changes to persistence." },
+      ],
+    } })} zh={false} />);
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "75");
+    expect(screen.getByText("3 of 4 assessment criteria met")).toBeTruthy();
+    expect(screen.getByText("Needs more work")).toBeTruthy();
+    expect(screen.getByText("Mastery verification")).toBeTruthy();
+    expect(screen.getByText("Not yet passed")).toBeTruthy();
+  });
+
+  it("does not treat self-marking as assessed mastery", () => {
+    render(<ObjectiveDetail report={report({ mastered: true, mastery_source: "learner" })} zh={false} />);
+    expect(screen.getByText("Self-marked; not yet verified")).toBeTruthy();
     expect(screen.queryByText("100%")).toBeNull();
-    expect(
-      screen.getByText(/Practice questions do not open this gate/),
-    ).toBeTruthy();
   });
 
   it("fills the bar once the qualitative gate actually opens", () => {
@@ -68,9 +86,7 @@ describe("objective gate bar", () => {
     );
 
     expect(screen.getByText("100%")).toBeTruthy();
-    expect(
-      screen.queryByText(/Practice questions do not open this gate/),
-    ).toBeNull();
+    expect(screen.getByText("Mastery verified")).toBeTruthy();
   });
 
   it("still reports real progress against a quantitative gate", () => {

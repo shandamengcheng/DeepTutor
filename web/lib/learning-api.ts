@@ -291,6 +291,14 @@ export interface ObjectiveReport {
   gate: "quantitative" | "qualitative";
   mastered: boolean;
   assessed_mastered: boolean;
+  qualitative_assessment?: {
+    assessed_at: number;
+    criteria: {
+      name: string;
+      status: "met" | "needs_work" | "unassessed";
+      evidence: string;
+    }[];
+  } | null;
   explained?: { summary: string; timestamp: number };
   required_visual_tasks?: string[];
   demonstrated_visual_tasks?: string[];

@@ -8,6 +8,7 @@ import uuid
 from deeptutor.learning.grading import classify_error, grade_answer
 from deeptutor.learning.mastery import compute_mastery
 from deeptutor.learning.models import (
+    AssessmentCriterion,
     DeferredObjective,
     ErrorRecord,
     InteractionStatus,
@@ -1763,6 +1764,7 @@ class LearningService:
         *,
         passed: bool,
         evidence: str = "",
+        criteria: list[AssessmentCriterion] | None = None,
         scheduler: SpacedRepetitionScheduler | None = None,
     ) -> None:
         """Record the qualitative (CONCEPT / DESIGN) gate outcome.
@@ -1779,6 +1781,7 @@ class LearningService:
             kp_id,
             passed=passed,
             evidence=evidence,
+            criteria=criteria,
             scheduler=scheduler,
         )
         self.save(progress)
@@ -1790,6 +1793,7 @@ class LearningService:
         *,
         passed: bool,
         evidence: str = "",
+        criteria: list[AssessmentCriterion] | None = None,
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
@@ -1811,6 +1815,7 @@ class LearningService:
                 kp_id,
                 passed=passed,
                 evidence=evidence,
+                criteria=criteria,
                 scheduler=scheduler,
                 session_id=session_id,
                 turn_id=turn_id,
@@ -1852,6 +1857,7 @@ class LearningService:
         *,
         passed: bool,
         evidence: str = "",
+        criteria: list[AssessmentCriterion] | None = None,
         scheduler: SpacedRepetitionScheduler | None = None,
         session_id: str = "",
         turn_id: str = "",
@@ -1864,6 +1870,30 @@ class LearningService:
             ).hex
             if any(item.evidence_id == evidence_id for item in progress.learning_evidence):
                 return False
+        previous = next(
+            (
+                event
+                for event in reversed(progress.learning_evidence)
+                if event.knowledge_point_id == kp_id and event.assessment_type == "qualitative"
+            ),
+            None,
+        )
+        if previous and previous.criteria and not criteria:
+            raise MasteryInteractionError("Reuse the complete existing assessment criteria")
+        if criteria:
+            names = [item.name for item in criteria]
+            if len(names) != len(set(names)):
+                raise MasteryInteractionError("Assessment criteria must have unique names")
+            if passed and any(item.status != "met" for item in criteria):
+                raise MasteryInteractionError("A passed assessment cannot contain unmet criteria")
+            if (
+                previous
+                and previous.criteria
+                and set(names) != {item.name for item in previous.criteria}
+            ):
+                raise MasteryInteractionError(
+                    "Reuse the complete existing criteria; do not drop unmet requirements"
+                )
         progress.qualitative_mastery[kp_id] = bool(passed)
         progress.deferred_objectives.pop(kp_id, None)
         current = progress.mastery_levels.get(kp_id, 0.0)
@@ -1876,6 +1906,7 @@ class LearningService:
             knowledge_point_id=kp_id,
             timestamp=moment,
             assessment_type="qualitative",
+            criteria=criteria or [],
             result="correct" if passed else "partial",
             quality=(1.0 if evidence else 0.9) if passed else 0.2,
             attempt_count=1,

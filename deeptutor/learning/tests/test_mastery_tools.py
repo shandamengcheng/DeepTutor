@@ -1994,3 +1994,87 @@ async def test_an_empty_profile_call_is_refused_with_the_fields_it_wanted(path_i
     result = await MasteryProfileTool().execute(_mastery_path_id=path_id)
     assert result.success is False
     assert "time_budget" in result.content
+
+
+@pytest.mark.asyncio
+async def test_assess_records_partial_rubric_without_passing_gate(path_id):
+    from deeptutor.learning.policy import objective_report
+
+    await _build_basic(path_id)
+    progress = LearningStore().load(path_id)
+    kp_id = progress.modules[0].knowledge_points[1].id
+    criteria = [
+        {"name": "Controller", "status": "met", "evidence": "Learner assigns routing correctly"},
+        {
+            "name": "Domain",
+            "status": "needs_work",
+            "evidence": "Learner assigns state changes to persistence",
+        },
+        {"name": "Persistence", "status": "unassessed", "evidence": ""},
+    ]
+    result = await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        passed=False,
+        feedback="Domain boundary needs repair",
+        criteria=criteria,
+    )
+    assert result.success
+    assert json.loads(result.content)["mastered"] is False
+    loaded = LearningStore().load(path_id)
+    assert objective_report(loaded, kp_id)["qualitative_assessment"]["criteria"] == criteria
+    status = json.loads((await MasteryStatusTool().execute(_mastery_path_id=path_id)).content)
+    assert status["qualitative_assessments"][kp_id]["criteria"] == criteria
+    version = loaded.version
+    for invalid in [
+        [],
+        criteria[:1],  # Cannot drop unmet requirements to inflate progress.
+        [{**criteria[0], "evidence": ""}],
+        [criteria[0], criteria[0]],
+    ]:
+        rejected = await MasteryAssessTool().execute(
+            _mastery_path_id=path_id,
+            knowledge_point_id=kp_id,
+            passed=False,
+            criteria=invalid,
+        )
+        assert not rejected.success
+        assert LearningStore().load(path_id).version == version
+    rejected = await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        passed=True,
+        criteria=criteria,
+    )
+    assert not rejected.success
+    assert LearningStore().load(path_id).version == version
+    complete = [
+        {**item, "status": "met", "evidence": "Learner now explains " + item["name"]}
+        for item in criteria
+    ]
+    passed = await MasteryAssessTool().execute(
+        _mastery_path_id=path_id,
+        knowledge_point_id=kp_id,
+        passed=True,
+        criteria=complete,
+    )
+    assert passed.success
+    assert json.loads(passed.content)["mastered"] is True
+
+
+def test_qualitative_progress_does_not_reuse_an_older_rubric():
+    from deeptutor.learning.models import AssessmentCriterion, LearningEvidence, LearningProgress
+    from deeptutor.learning.policy import qualitative_assessment
+
+    progress = LearningProgress(book_id="legacy")
+    progress.learning_evidence = [
+        LearningEvidence(
+            knowledge_point_id="kp",
+            assessment_type="qualitative",
+            criteria=[
+                AssessmentCriterion(name="Boundary", status="met", evidence="Explains boundary")
+            ],
+        ),
+        LearningEvidence(knowledge_point_id="kp", assessment_type="qualitative", result="partial"),
+    ]
+    assert qualitative_assessment(progress, "kp") is None

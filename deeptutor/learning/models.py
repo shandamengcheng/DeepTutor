@@ -162,6 +162,23 @@ class ErrorRecord(BaseModel):
     created_at: float = Field(default_factory=time.time)
 
 
+class AssessmentCriterion(BaseModel):
+    """One observable requirement of a qualitative objective, with answer evidence."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
+    status: Literal["met", "needs_work", "unassessed"]
+    evidence: str = Field(max_length=2000)
+
+    @field_validator("evidence")
+    @classmethod
+    def require_assessment_evidence(cls, value: str, info) -> str:
+        if info.data.get("status") != "unassessed" and not value:
+            raise ValueError("Assessed criteria require evidence from the learner's answer")
+        return value
+
+
 class LearningEvidence(BaseModel):
     """One durable review/assessment event that can recompute retention state.
 
@@ -187,6 +204,7 @@ class LearningEvidence(BaseModel):
     session_id: str = ""
     turn_id: str = ""
     visual_context: dict[str, Any] = Field(default_factory=dict)
+    criteria: list[AssessmentCriterion] = Field(default_factory=list, max_length=20)
 
 
 class RepetitionState(BaseModel):

@@ -53,6 +53,7 @@ from deeptutor.core.tool_protocol import BaseTool, ToolDefinition, ToolParameter
 # are imported lazily inside the call paths instead (same pattern as the other
 # builtin tools).
 from deeptutor.learning.models import (
+    AssessmentCriterion,
     InteractionStatus,
     KnowledgePoint,
     KnowledgeType,
@@ -77,6 +78,7 @@ from deeptutor.learning.policy import (
     map_summary,
     next_objective,
     path_display_name,
+    qualitative_assessment,
     visual_achievements,
 )
 from deeptutor.learning.question_card import (
@@ -774,6 +776,12 @@ class MasteryStatusTool(BaseTool):
             "next": next_objective(progress).to_dict(),
             "map": map_summary(progress),
             **_profile_status(progress),
+            "qualitative_assessments": {
+                kp.id: assessment
+                for module in progress.modules
+                for kp in module.knowledge_points
+                if (assessment := qualitative_assessment(progress, kp.id)) is not None
+            },
             "learning_stages": {
                 kp.id: learning_stage(progress, kp.id)
                 for module in progress.modules
@@ -1434,6 +1442,17 @@ class MasteryAssessTool(BaseTool):
             ),
             parameters=[
                 ToolParameter(
+                    name="criteria",
+                    type="array",
+                    description=(
+                        "Full stable rubric for this objective (including unmet and unassessed requirements). "
+                        "Reuse names from mastery_status.qualitative_assessments. Mark each requirement "
+                        "met, needs_work, or unassessed using evidence from the learner's answers, "
+                        "never conversation length. Do not drop requirements to raise progress."
+                    ),
+                    items=AssessmentCriterion.model_json_schema(),
+                ),
+                ToolParameter(
                     name="knowledge_point_id",
                     type="string",
                     description="Objective id from mastery_status (verbatim).",
@@ -1467,6 +1486,17 @@ class MasteryAssessTool(BaseTool):
         passed = bool(kwargs.get("passed"))
         feedback = str(kwargs.get("feedback") or "").strip()
 
+        from pydantic import TypeAdapter, ValidationError
+
+        try:
+            criteria = TypeAdapter(list[AssessmentCriterion]).validate_python(
+                kwargs.get("criteria", [])
+            )
+            if "criteria" in kwargs and not 1 <= len(criteria) <= 20:
+                raise ValueError("Supply 1 to 20 assessment criteria")
+        except (ValidationError, ValueError) as exc:
+            return ToolResult(content=f"Invalid assessment criteria: {exc}", success=False)
+
         service = _new_service()
         progress = _load_path(service, path_id)
         if progress is None:
@@ -1496,6 +1526,7 @@ class MasteryAssessTool(BaseTool):
                 kp_id,
                 passed=passed,
                 evidence=feedback,
+                criteria=criteria,
                 scheduler=SpacedRepetitionScheduler(),
                 session_id=_resolve_session_id(kwargs),
                 turn_id=_resolve_turn_id(kwargs),
@@ -1518,6 +1549,7 @@ class MasteryAssessTool(BaseTool):
             "knowledge_point_id": kp_id,
             "path_revision": progress.version,
             "passed": passed,
+            "qualitative_assessment": qualitative_assessment(progress, kp_id),
             "mastered": is_mastered(progress, kp),
             "mastery": round(display_mastery(progress, kp), 3),
             "next": next_objective(progress).to_dict(),
