@@ -6,6 +6,7 @@ const {
   BrowserWindow,
   dialog,
   globalShortcut,
+  ipcMain,
   Menu,
   nativeImage,
   shell,
@@ -20,6 +21,8 @@ const {
 } = require("./settings");
 const { ownsRuntime, quitAfterReadyDelay, shouldHideOnClose } = require("./lifecycle");
 const { launcherPaths, startRuntime, stopRuntime } = require("./runtime");
+
+const { createPerformanceMonitor } = require("./performance");
 
 app.setName("DeepTutor");
 
@@ -36,6 +39,7 @@ let bundledNode = null;
 let settings = null;
 let shutdownStarted = false;
 let shutdownComplete = false;
+let performanceMonitor = null;
 
 function resolveProjectRoot() {
   const explicit = process.env.DEEPTUTOR_PROJECT_ROOT;
@@ -91,6 +95,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      preload: process.env.DEEPTUTOR_DESKTOP_PERFORMANCE === "0" ? undefined : path.join(__dirname, "performance-preload.js"),
     },
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
@@ -196,6 +201,8 @@ function menuTemplate() {
           label: "查看运行日志",
           click: () => void shell.openPath(launcherPaths(runtimeHome).log),
         },
+        { label: "查看性能报告", click: () => performanceMonitor && void shell.openPath(performanceMonitor.paths.report) },
+        { label: "打开性能采样目录", click: () => void shell.openPath(path.join(launcherPaths(runtimeHome).root, "performance")) },
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
@@ -251,6 +258,7 @@ function registerShortcut() {
 }
 
 async function launchRuntime() {
+  performanceMonitor?.record("runtime_start_requested");
   runtime = await startRuntime({
     runtimeHome,
     projectRoot,
@@ -259,9 +267,13 @@ async function launchRuntime() {
     bundledPython,
     bundledNode,
   });
+  performanceMonitor?.record("runtime_ready", { reused: !runtime.startedByDesktop, serviceStartup: runtime.state.performance || null });
   const window = ensureWindow();
+  performanceMonitor?.renderer(null);
+  performanceMonitor?.record("frontend_navigation_started");
   if (window) {
     await window.loadURL(runtime.state.frontend_url);
+    performanceMonitor?.record("frontend_loaded");
   }
 }
 
@@ -294,6 +306,19 @@ app.whenReady().then(async () => {
   bundledNode = resolveBundledNode();
   projectRoot = bundledPython ? null : resolveProjectRoot();
   settings = loadDesktopSettings(runtimeHome);
+  if (process.env.DEEPTUTOR_DESKTOP_PERFORMANCE !== "0") {
+    try {
+      performanceMonitor = createPerformanceMonitor({ app, runtimeHome, getWindow: () => mainWindow });
+    } catch (error) { console.warn("性能监测无法启动:", error.message); }
+  }
+  ipcMain.on("desktop:performance", (event, value) => {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) return;
+    if (!value || typeof value !== "object") return;
+    const fields = ["navigationTimeOrigin", "domContentLoadedMs", "loadMs", "firstContentfulPaintMs", "jsHeapMiB", "longTaskCount", "longTaskMs"];
+    performanceMonitor?.renderer(Object.fromEntries(fields.map((key) => [key,
+      typeof value[key] === "number" && Number.isFinite(value[key]) && value[key] >= 0 ? value[key] : null,
+    ])));
+  });
   mainWindow = createWindow();
   void mainWindow.loadURL(loadingDocument("正在启动你的本地 DeepTutor…"))
     .catch((error) => console.error("DeepTutor 启动页加载失败:", error));
@@ -306,6 +331,7 @@ app.whenReady().then(async () => {
     );
     if (automaticQuitDelay !== null) setTimeout(() => app.quit(), automaticQuitDelay);
   } catch (error) {
+    performanceMonitor?.record("startup_failed");
     const window = ensureWindow();
     if (!window) return;
     const detail = error instanceof Error ? error.message : String(error);
@@ -331,6 +357,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", (event) => {
+  performanceMonitor?.stop();
   if (shutdownComplete) return;
   if (!ownsRuntime(runtime)) {
     shutdownStarted = true;

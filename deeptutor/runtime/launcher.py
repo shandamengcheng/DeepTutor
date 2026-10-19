@@ -1274,6 +1274,7 @@ def _mark_detached_ready(
     frontend_url: str,
     backend_port: int,
     frontend_port: int,
+    performance: dict[str, Any] | None = None,
 ) -> None:
     state = _read_detached_state(paths)
     if state is None or state.get("token") != token:
@@ -1285,6 +1286,7 @@ def _mark_detached_ready(
             "backend_port": backend_port,
             "frontend_port": frontend_port,
             "ready_at": time.time(),
+            "performance": performance,
         }
     )
     _write_detached_state(paths, state)
@@ -1402,6 +1404,7 @@ def start(
     detach: bool = False,
     open_browser: bool = True,
 ) -> None:
+    startup_started_at = time.monotonic()
     _relax_console_encoding()
     runtime_home = get_runtime_home(home)
     try:
@@ -1604,6 +1607,19 @@ def start(
     cleanup_started = False
     exit_code = 0
 
+    def publish_performance() -> None:
+        if detached_paths is None:
+            return
+        state = _read_detached_state(detached_paths)
+        if state is not None and state.get("token") == detached_token:
+            state["performance"] = {
+                "backend_pid": backend.process.pid if backend else None,
+                "frontend_pid": web.process.pid if web else (
+                    existing_frontend.pid if existing_frontend else None
+                ),
+            }
+            _write_detached_state(detached_paths, state)
+
     def request_shutdown(signal_name: str | None = None) -> None:
         nonlocal shutdown_requested
         if shutdown_requested:
@@ -1641,8 +1657,10 @@ def start(
 
     try:
         _log(_t("start.starting_backend"))
+        backend_started_at = time.monotonic()
         backend = _spawn(backend_cmd, cwd=runtime_home, env=common_env, name="backend")
         processes.append(backend)
+        publish_performance()
         _wait_for_http(
             name=_t("start.backend"),
             url=f"http://127.0.0.1:{backend_port}/",
@@ -1654,6 +1672,8 @@ def start(
         if should_stop():
             return
 
+        backend_ready_ms = (time.monotonic() - backend_started_at) * 1000
+        frontend_started_at = time.monotonic()
         if existing_frontend is not None:
             pid = existing_frontend.pid if existing_frontend.pid is not None else "unknown"
             _log(_t("start.reusing_frontend", url=frontend_url, pid=pid))
@@ -1669,6 +1689,7 @@ def start(
             _log(_t("start.starting_frontend"))
             web = _spawn(frontend.command, cwd=frontend.cwd, env=common_env, name="frontend")
             processes.append(web)
+            publish_performance()
             _wait_for_http(
                 name=_t("start.frontend"),
                 url=f"http://127.0.0.1:{frontend_port}/",
@@ -1687,6 +1708,15 @@ def start(
                 frontend_url=frontend_url,
                 backend_port=backend_port,
                 frontend_port=frontend_port,
+                performance={
+                    "backend_pid": backend.process.pid,
+                    "frontend_pid": web.process.pid if web else existing_frontend.pid,
+                    "frontend_reused": existing_frontend is not None,
+                    "frontend_runtime": frontend.kind,
+                    "runtime_preparation_ms": (backend_started_at - startup_started_at) * 1000,
+                    "backend_ready_ms": backend_ready_ms,
+                    "frontend_ready_ms": (time.monotonic() - frontend_started_at) * 1000,
+                },
             )
         _log(_t("start.open_in_browser", url=frontend_url))
         if open_browser:

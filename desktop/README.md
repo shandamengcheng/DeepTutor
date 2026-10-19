@@ -79,3 +79,50 @@ runtime when packaging.
 Local persistence is not the same as offline inference. The UI and this guide
 state that distinction instead of claiming that cloud-backed prompts never
 leave the Mac.
+
+## Performance monitoring
+
+The desktop shell records local performance samples every 3 seconds by default.
+Use **DeepTutor → 查看性能报告** to open the current HTML report, or
+**打开性能采样目录** to inspect the JSON summary and raw JSONL samples. Refresh
+an open report to see new samples. Files live in
+`<DEEPTUTOR_HOME>/data/user/runtime/performance/` (normally under
+`~/Library/Application Support/DeepTutor`). No metrics are uploaded.
+Set `DEEPTUTOR_DESKTOP_PERFORMANCE=0` to disable monitoring.
+
+The report separates:
+
+- Electron main/GPU/utility processes (excluding the page Renderer)
+- frontend Renderer, plus JS heap, first contentful paint and long tasks
+- backend process tree, including workers and tools launched by the backend
+- frontend server process tree (Node/Next.js)
+- launcher and service children not yet classified
+
+CPU is calculated from cumulative process CPU-time differences over each
+sampling interval: 100% means one logical core; multi-process groups may exceed
+100%. The first interval and newly discovered processes have unknown CPU.
+Memory is RSS in MiB; summed RSS can double-count shared pages, so it is not
+exclusive physical memory. The collector uses macOS/Linux `ps`; errors and
+unavailable metrics are shown rather than converted to zero. External model
+servers such as an independently started Ollama are outside these process trees.
+
+Startup events include Electron ready (relative to process start), runtime
+request/ready, frontend navigation/load, and backend/frontend HTTP readiness
+measured by the Python launcher. Reused runtimes are marked: their service
+startup durations belong to the original launch. FCP and DOM/load timings are
+relative to page navigation, **not** confirmation of React hydration or application
+interactivity. Older running launchers without performance PID metadata remain
+in the launcher group; restart the services to enable precise grouping.
+
+Each launch creates a separate report. Raw sampling stops at 20 MiB per session;
+summary trends retain the latest 600 samples and peaks retain the whole session.
+Files have owner-only permissions. Reports from previous launches remain available
+until manually deleted from the sampling directory.
+
+For a repeatable baseline, measure a production packaged build with DevTools
+closed, on the same machine: cold startup, 10 minutes idle, a long streaming chat
+with scrolling, PDF import/retrieval/visualization, and a hidden tray window.
+Compare startup stages and group memory/CPU peaks. High Renderer CPU suggests
+profiling page work; high backend CPU suggests profiling parsing/retrieval;
+large idle Electron overhead provides evidence for a Tauri prototype. A single
+startup sample cannot establish the bottleneck for all workloads.
