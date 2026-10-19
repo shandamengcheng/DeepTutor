@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -32,6 +33,31 @@ describe("ModelSelector local Agent targets", () => {
     expect(onChange).toHaveBeenCalledWith(null);
     expect(onLocalAgentChange).toHaveBeenCalledWith("Codex");
     expect(onLocalAgentChange).not.toHaveBeenCalledWith("Claude");
+  });
+
+  it("restores the sole local Agent when session configuration clears the selection", () => {
+    const onChange = vi.fn();
+    const onLocalAgentChange = vi.fn();
+    const props = {
+      options: [],
+      localAgents: [{ name: "Codex", kind: "codex" }],
+      activeDefault: null,
+      value: null,
+      loading: false,
+      error: true,
+      onChange,
+      onLocalAgentChange,
+    };
+
+    const { rerender } = render(
+      <ModelSelector {...props} selectedLocalAgent={null} />,
+    );
+    rerender(<ModelSelector {...props} selectedLocalAgent="Codex" />);
+    rerender(<ModelSelector {...props} selectedLocalAgent={null} />);
+
+    expect(onLocalAgentChange).toHaveBeenCalledTimes(2);
+    expect(onLocalAgentChange).toHaveBeenNthCalledWith(1, "Codex");
+    expect(onLocalAgentChange).toHaveBeenNthCalledWith(2, "Codex");
   });
 
   it("ignores a stale active LLM and defaults to the first available Agent", () => {
@@ -184,4 +210,27 @@ describe("ModelSelector local Agent targets", () => {
       model_id: "model-1",
     });
   });
+});
+
+
+describe("intentional target selection", () => {
+  for (const action of ["System default", "Codex"]) {
+    it(`preserves an intentional clear via ${action}`, async () => {
+      function Controlled() {
+        const [agent, setAgent] = useState<string | null>("Codex");
+        return <>
+          <span data-testid="agent">{agent ?? "none"}</span>
+          <ModelSelector options={[]} localAgents={[{ name: "Codex" }]}
+            selectedLocalAgent={agent} activeDefault={null} value={null}
+            loading={false} error={false} allowSystemDefault
+            onChange={() => {}} onLocalAgentChange={setAgent} />
+        </>;
+      }
+      const user = userEvent.setup();
+      render(<Controlled />);
+      await user.click(screen.getByRole("button", { name: "Select model" }));
+      await user.click(screen.getByRole("button", { name: action === "System default" ? "Use the active default model from Settings" : action }));
+      expect(screen.getByTestId("agent")).toHaveTextContent("none");
+    });
+  }
 });

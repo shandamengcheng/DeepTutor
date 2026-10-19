@@ -190,7 +190,7 @@ export default function ModelSelector({
     () => localAgents.find(agent => agent.name === selectedLocalAgent) ?? null,
     [localAgents, selectedLocalAgent]
   )
-  const defaultTargetAppliedRef = useRef(false)
+  const userSelectedTargetRef = useRef(false)
 
   // The dropdown order is the default order: local Agents first, followed by
   // configured LLMs. Apply that default only when the caller has no saved or
@@ -198,13 +198,12 @@ export default function ModelSelector({
   // composer surface, including a local-Agent-only setup where LLM discovery
   // failed.
   useEffect(() => {
-    if (defaultTargetAppliedRef.current || selectedAgentOption || selectedOption) {
+    if (userSelectedTargetRef.current || selectedAgentOption || selectedOption) {
       return
     }
 
     const firstAgent = localAgents[0]
     if (firstAgent) {
-      defaultTargetAppliedRef.current = true
       onChange(null)
       onLocalAgentChange?.(firstAgent.name)
       return
@@ -212,7 +211,6 @@ export default function ModelSelector({
 
     const firstModel = options[0]
     if (firstModel) {
-      defaultTargetAppliedRef.current = true
       onLocalAgentChange?.(null)
       onChange({
         profile_id: firstModel.profile_id,
@@ -305,6 +303,7 @@ export default function ModelSelector({
                 type="button"
                 aria-label={defaultDetail}
                 onClick={() => {
+                  userSelectedTargetRef.current = true
                   onLocalAgentChange?.(null)
                   onChange(null)
                   setOpen(false)
@@ -340,6 +339,7 @@ export default function ModelSelector({
                     agent={agent}
                     selected={selectedLocalAgent === agent.name}
                     onSelect={() => {
+                      userSelectedTargetRef.current = true
                       onChange(null)
                       onLocalAgentChange?.(selectedLocalAgent === agent.name ? null : agent.name)
                       setOpen(false)
@@ -361,6 +361,7 @@ export default function ModelSelector({
                   option={option}
                   selected={optionKey === selectedKey}
                   onSelect={() => {
+                    userSelectedTargetRef.current = true
                     onLocalAgentChange?.(null)
                     onChange(optionSelection)
                     setOpen(false)
