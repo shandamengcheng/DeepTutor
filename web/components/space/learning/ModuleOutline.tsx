@@ -1,9 +1,8 @@
-"use client";
-
-import Link from "next/link";
+"use client"
 
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next"
+import Link from 'next/link'
 import {
   ArrowRight,
   Check,
@@ -23,9 +22,10 @@ import {
   type ObjectiveReport,
 } from "@/lib/learning-api";
 
+import { masterySectionRoute, type MasterySectionSession } from '@/lib/mastery-study-route'
+
 import { knowledgeTypeLabel, topicDisplayName, type Translate } from "./format";
-import { ObjectiveDetail } from "./ObjectiveDetail";
-import { masterySectionRoute, type MasterySectionSession } from "@/lib/mastery-study-route";
+import { ObjectiveDetail } from "./ObjectiveDetail"
 
 function statusLabel(point: MapKnowledgePoint, t: Translate) {
   if (point.mastery_source === "learner") return t("Marked as known");
@@ -88,8 +88,7 @@ export function ModuleOutline({
   onOverride,
   sessions = [],
 }: {
-  topic: MasteryTopic;
-  sessions?: readonly MasterySectionSession[];
+  topic: MasteryTopic
   revision: number;
   selectedId: string | null;
   zh: boolean;
@@ -98,11 +97,20 @@ export function ModuleOutline({
     objectiveId: string,
     mastered: boolean,
     note: string,
-  ) => Promise<void>;
+  ) => Promise<void>
+  sessions?: readonly MasterySectionSession[]
 }) {
   const { t } = useTranslation();
   const nextId = topic.next.knowledge_point_id;
-  const topicName = topicDisplayName(topic, t);
+  const topicName = topicDisplayName(topic, t)
+  const [openModules, setOpenModules] = useState<Record<string, boolean>>({})
+  const defaultModuleId =
+    topic.map.modules.find(module => module.knowledge_points.some(point => point.id === nextId))
+      ?.id ?? topic.map.modules[0]?.id
+  const isOpen = (module: MasteryTopic['map']['modules'][number]) =>
+    module.knowledge_points.some(point => point.id === selectedId) ||
+    (openModules[module.id] ?? module.id === defaultModuleId)
+  const allOpen = topic.map.modules.every(isOpen)
 
   return (
     // One card per module rather than one card divided into modules. A module
@@ -112,98 +120,147 @@ export function ModuleOutline({
     <section
       id="mastery-outline-start"
       aria-label={t("Topic outline")}
-      className="space-y-3"
+      className="space-y-3 scroll-mt-6"
     >
-      {topic.map.modules.map((module, moduleIndex) => (
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted-foreground)]">
+        <span>
+          {t('{{modules}} modules · {{points}} knowledge points', {
+            modules: topic.map.modules.length,
+            points: topic.map.counts.total,
+          })}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            if (allOpen) onSelect(null)
+            setOpenModules(
+              Object.fromEntries(topic.map.modules.map(module => [module.id, !allOpen]))
+            )
+          }}
+          className="min-h-9 rounded-md px-2 font-medium hover:bg-[var(--muted)] hover:text-[var(--foreground)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+        >
+          {allOpen ? t('Collapse all modules') : t('Expand all modules')}
+        </button>
+      </div>
+      {topic.map.modules.map((module, moduleIndex) => {
+        const open = isOpen(module)
+        const contentId = `mastery-module-${module.id}`
+        return (
         <div
           key={module.id}
-          className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]"
-        >
-          <div>
-            <header className="bg-[var(--secondary)] px-4 py-2.5">
-              <div className="flex items-baseline gap-2.5">
-                <span className="text-[11px] font-semibold tabular-nums text-[var(--muted-foreground)]">
+          className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
+          >
+          <h3>
+            <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={contentId}
+                onClick={() => {
+                  if (open && module.knowledge_points.some(point => point.id === selectedId))
+                    onSelect(null)
+                  setOpenModules(current => ({ ...current, [module.id]: !open }))
+                }}
+                className="flex min-h-14 w-full items-center gap-3 bg-[var(--secondary)] px-4 py-3 text-left transition-colors hover:bg-[var(--muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)]"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="text-xs text-[var(--muted-foreground)]">
                   {t("Module {{n}}", { n: moduleIndex + 1 })}
-                </span>
-                {module.name.trim() !== topicName.trim() && (
-                  <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold">
+                </span>{' '}
+                    {module.name.trim() !== topicName.trim() && (
+                  <span className="break-words text-sm font-semibold text-[var(--foreground)]">
                     {module.name}
-                  </h2>
+                  </span>
                 )}
-                <span className="ml-auto shrink-0 text-[11px] tabular-nums text-[var(--muted-foreground)]">
+                </span>
+                  {module.objective.trim() && (
+                    <span className="mt-1 block text-xs leading-5 text-[var(--muted-foreground)]">
+                      {module.objective}
+                    </span>
+                  )}
+                </span>
+                <span
+                  className="shrink-0 text-xs tabular-nums text-[var(--muted-foreground)]"
+                  aria-label={t('{{mastered}} of {{total}} mastered', {
+                    mastered: module.mastered,
+                    total: module.total,
+                  })}
+                >
                   {module.mastered}/{module.total}
                 </span>
-              </div>
-              {/* The ability this module delivers. A bare noun tells a learner
-                  nothing about why these waypoints belong together, and this
-                  sentence is also the contract the tutor may revise them
-                  against — so it is worth the second line. */}
-              {module.objective.trim() && (
-                <p className="mt-1 text-[12px] leading-5 text-[var(--muted-foreground)]">
-                  {module.objective}
-                </p>
-              )}
-            </header>
-            <ul>
+              <ChevronRight
+                  aria-hidden="true"
+                  className={`h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`}
+                />
+              </button>
+            </h3>
+            <ul id={contentId} hidden={!open} className="divide-y divide-[var(--border)]">
               {module.knowledge_points.map((point) => {
                 const selected = point.id === selectedId;
-                const current = point.id === nextId;
+                const current = point.id === nextId
+                const detailId = `mastery-point-${point.id}`
                 return (
                   <li key={point.id}>
                     <button
                       type="button"
                       onClick={() => onSelect(selected ? null : point.id)}
-                      aria-pressed={selected}
-                      className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition ${
-                        selected
+                      aria-expanded={selected}
+                      aria-controls={detailId}
+                      aria-current={current ? 'step' : undefined}
+                      className={`flex min-h-16 w-full items-start gap-3 px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--ring)] ${selected
                           ? "bg-[var(--muted)]"
                           : "hover:bg-[var(--muted)]/60"
                       }`}
                     >
+                      <span className="pt-0.5">
                       <StatusMark point={point} />
-                      <span
-                        className={`min-w-0 flex-1 truncate text-[13px] ${
-                          point.status === "new"
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span
+                        className={`block break-words text-[13px] leading-5 ${point.status === "new"
                             ? "text-[var(--muted-foreground)]"
                             : "text-[var(--foreground)]"
                         }`}
                       >
                         {point.name}
                       </span>
-                      {current && (
-                        <span className="shrink-0 rounded-full bg-[var(--primary)]/10 px-2 py-0.5 text-[10px] font-semibold text-[var(--primary)]">
-                          {t("Next")}
-                        </span>
+                      <span className="mt-1 flex flex-wrap items-center gap-2 text-[11px] leading-4">
+                          {current && (
+                        <span className="font-medium text-[var(--primary)]">{t("Next")}</span>
                       )}
-                      <span className="hidden shrink-0 text-[11px] text-[var(--muted-foreground)] sm:inline">
+                      <span className="text-[var(--muted-foreground)]">
                         {statusLabel(point, t)}
                       </span>
+                      </span>
+                      </span>
                       <ChevronRight
-                        className={`h-3.5 w-3.5 shrink-0 text-[var(--muted-foreground)] transition ${
-                          selected ? "rotate-90" : ""
+                        aria-hidden="true"
+                        className={`mt-1 h-4 w-4 shrink-0 text-[var(--muted-foreground)] transition-transform motion-reduce:transition-none ${selected ? "rotate-90" : ""
                         }`}
                       />
                     </button>
+                    <div id={detailId} hidden={!selected}>
                     {selected && (
                       <ObjectiveDrawer
                         key={point.id}
                         pathId={topic.path_id}
                         objectiveId={point.id}
+                          revision={revision}
+                          zh={zh}
                         studyHref={masterySectionRoute({ pathId: topic.path_id, sectionId: point.id, courseId: "", sessions })}
                         studyLabel={point.status === "new" ? t("Start learning") : t("Continue learning")}
-                        revision={revision}
-                        zh={zh}
-                        onClose={() => onSelect(null)}
+                          onClose={() => onSelect(null)}
                         onOverride={onOverride}
                       />
                     )}
+                  </div>
                   </li>
                 );
               })}
             </ul>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </section>
   );
 }
@@ -211,17 +268,15 @@ export function ModuleOutline({
 function ObjectiveDrawer({
   pathId,
   objectiveId,
-  studyHref,
-  studyLabel,
   revision,
   zh,
   onClose,
   onOverride,
+  studyHref,
+  studyLabel,
 }: {
   pathId: string;
   objectiveId: string;
-  studyHref: string;
-  studyLabel: string;
   revision: number;
   zh: boolean;
   onClose: () => void;
@@ -229,7 +284,9 @@ function ObjectiveDrawer({
     objectiveId: string,
     mastered: boolean,
     note: string,
-  ) => Promise<void>;
+  ) => Promise<void>
+  studyHref: string
+  studyLabel: string
 }) {
   const { t } = useTranslation();
   const [report, setReport] = useState<ObjectiveReport | null>(null);
@@ -263,7 +320,7 @@ function ObjectiveDrawer({
   };
 
   return (
-    <aside className="border-t border-[var(--border)] bg-[var(--secondary)]/60 py-4 pl-[52px] pr-4">
+    <aside className="border-t border-[var(--border)] bg-[var(--secondary)]/60 px-4 py-4 sm:pl-12">
       {!report ? (
         <div className="flex min-h-32 items-center justify-center text-[var(--muted-foreground)]">
           {error ? error : <Loader2 className="h-5 w-5 animate-spin" />}

@@ -114,9 +114,42 @@ describe('module outline navigation', () => {
   it('starts an unvisited point in its own section rather than the global next point', async () => {
     vi.mocked(fetchObjectiveReport).mockResolvedValueOnce({ ...report, id: 'kp2', status: 'new', explanation: '' })
     render(<Outline />)
+    fireEvent.click(screen.getByRole('button', { name: /Module 2 Storage/ }))
     fireEvent.click(screen.getByRole('button', { name: /Database boundaries/ }))
     expect(await screen.findByRole('link', { name: 'Start learning' })).toHaveAttribute(
       'href', '/learning/mastery/path/sessions?section=kp2'
     )
+  })
+  it('starts with the current module open and lets learners expand other modules', () => {
+    render(<Outline />)
+    expect(screen.getByRole('button', { name: /Module 1 Basics/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: /Module 2 Storage/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    expect(screen.queryByRole('button', { name: /Database boundaries/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: /Module 2 Storage/ }))
+    expect(screen.getByRole('button', { name: /Database boundaries/ })).toBeTruthy()
+  })
+  it('collapses selected evidence with its module and exposes it again', () => {
+    render(<Outline />)
+    fireEvent.click(screen.getByRole('button', { name: /Layer boundaries/ }))
+    expect(screen.getByRole('button', { name: /Layer boundaries/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Module 1 Basics/ }))
+    expect(screen.queryByRole('button', { name: /Layer boundaries/ })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all modules' }))
+    expect(screen.getByRole('button', { name: /Layer boundaries/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    expect(screen.getByRole('button', { name: /Database boundaries/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all modules' }))
+    expect(screen.queryByRole('button', { name: /Database boundaries/ })).toBeNull()
   })
 })

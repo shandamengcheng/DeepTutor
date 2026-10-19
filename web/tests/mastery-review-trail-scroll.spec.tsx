@@ -46,75 +46,59 @@ function renderTrail(reviews: TopicReview[]) {
   )
 }
 
-function sectionElement() {
-  return screen.getByText('Review plan').closest('section')
-}
-
-function scrollerElement(section: HTMLElement) {
-  const firstRow = screen.getByRole('button', {
-    name: 'Start review for KP 1',
-  })
-  expect(section).toContainElement(firstRow)
-  const scroller = firstRow?.parentElement?.parentElement
-  expect(scroller).toBeTruthy()
-  return scroller as HTMLElement
-}
-
-/**
- * A long review trail must stay height-capped and scroll internally so the
- * outline column keeps its space (#1566). The layout contract lives in the
- * Tailwind classes the fix introduced, so a regression that drops them —
- * which re-crushes the outline — fails these assertions.
- */
-describe('ReviewTrail with a long review trail (#1566)', () => {
-  it('caps the section height instead of stretching the left column', () => {
+describe('ReviewTrail interactions', () => {
+  it('keeps all reviews reachable through explicit expansion', () => {
     renderTrail(makeReviews(7))
-
-    const section = sectionElement()
-    expect(section).not.toBeNull()
-    expect(section?.className).toContain('lg:max-h-[min(30vh,260px)]')
-    expect(section?.className).toContain('lg:shrink-0')
-    expect(section?.className).toContain('min-h-0')
-    expect(section?.className).toContain('flex-col')
-  })
-
-  it('scrolls the trail internally while the header stays fixed', () => {
-    renderTrail(makeReviews(7))
-
-    const section = sectionElement() as HTMLElement
-    const scroller = scrollerElement(section)
-    expect(scroller.className).toContain('overflow-y-auto')
-    expect(scroller.className).toContain('min-h-0')
-
-    const heading = screen.getByText('Review plan')
-    const hint = document.getElementById('review-retention-hint')
-    expect(hint?.className).toContain('shrink-0')
-    expect(scroller).not.toContainElement(heading)
-    expect(scroller).not.toContainElement(hint)
-  })
-
-  it('keeps every review reachable inside the capped scroller', () => {
-    renderTrail(makeReviews(7))
-
-    const section = sectionElement() as HTMLElement
-    const scroller = scrollerElement(section)
     expect(screen.getByText('7 due')).toBeTruthy()
-
-    // Collapsed trail still lives in the internal scroller.
-    for (let index = 1; index <= 5; index += 1) {
-      expect(screen.getByRole('button', { name: `Start review for KP ${index}` })).toBeTruthy()
-    }
-
+    expect(screen.getAllByRole('button', { name: /^Start review for/ })).toHaveLength(5)
     fireEvent.click(screen.getByRole('button', { name: 'Show all 7 reviews' }))
+    expect(screen.getAllByRole('button', { name: /^Start review for/ })).toHaveLength(7)
+    fireEvent.click(screen.getByRole('button', {
+        name: 'Show fewer' }))
+    expect(screen.getAllByRole('button', { name: /^Start review for/ })).toHaveLength(5)
+  })
 
-    for (let index = 1; index <= 7; index += 1) {
-      const row = screen.getByRole('button', {
-        name: `Start review for KP ${index}`,
-      })
-      expect(scroller).toContainElement(row)
+  it('separates viewing evidence from starting a review', () => {
+    const onSelect = vi.fn()
+    const onStartReview = vi.fn()
+    render(
+      <ReviewTrail
+        reviews={makeReviews(1)}
+        desiredRetention={0.9}
+        retentionBusy={false}
+        retentionError={null}
+        onRetentionChange={vi.fn()}
+        zh={false}
+        onSelect={onSelect}
+        onStartReview={onStartReview}
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'View learning evidence for KP 1' }))
+    expect(onSelect).toHaveBeenCalledWith('kp-1')
+    expect(onStartReview).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Start review for KP 1' }))
+    expect(onStartReview).toHaveBeenCalledWith('kp-1', 'KP 1')
+    expect(screen.getByText('Review rationale').closest('details')).not.toHaveAttribute('open')
+  })
+
+  it('keeps the retention setting available and disables it while saving', () => {
+    const onRetentionChange = vi.fn()
+    const props = {
+      reviews: [],
+      desiredRetention: 0.9,
+      retentionBusy: false,
+      retentionError: null,
+      onRetentionChange,
+      zh: false,
+      onSelect: vi.fn(),
+      onStartReview: vi.fn(),
     }
-    // Expanding must not lift the cap that protects the outline column.
-    expect(section.className).toContain('lg:max-h-[min(30vh,260px)]')
-    expect(scroller.className).toContain('overflow-y-auto')
+    const view = render(<ReviewTrail {...props} />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Recall target' }), {
+      target: { value: '0.95' },
+    })
+      expect(onRetentionChange).toHaveBeenCalledWith(0.95)
+    view.rerender(<ReviewTrail {...props} retentionBusy />)
+    expect(screen.getByRole('combobox', { name: 'Recall target' })).toBeDisabled()
   })
 })

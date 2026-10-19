@@ -1,7 +1,7 @@
 "use client";
 
 import Tooltip from "@/shared/ui/Tooltip";
-import { ArrowRight, CheckCircle2, Clock3, Loader2, Play } from "lucide-react";
+import { CheckCircle2, Clock3, Loader2, Play } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
 
@@ -45,14 +45,17 @@ export function ReviewTrail({
     ? RETENTION_TARGETS
     : [...RETENTION_TARGETS, desiredRetention].sort((a, b) => a - b);
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] lg:max-h-[min(30vh,260px)] lg:shrink-0">
+    <section
+      id="mastery-review-plan"
+      className="scroll-mt-6 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)]"
+    >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--secondary)] px-4 py-2.5">
         <Tooltip label={t("Scheduled by your forgetting curve")} as="div" side="top">
           <h2 tabIndex={0} className="text-[12px] font-semibold text-[var(--foreground)]">
             {t("Review plan")}
           </h2>
         </Tooltip>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-[11px] text-[var(--muted-foreground)]">
             <span>{t("Recall target")}</span>
             <select
@@ -60,7 +63,7 @@ export function ReviewTrail({
               onChange={(event) => onRetentionChange(Number(event.target.value))}
               disabled={retentionBusy}
               aria-describedby="review-retention-hint"
-              className="h-7 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40 disabled:opacity-60"
+              className="h-9 rounded-md border border-[var(--border)] bg-[var(--card)] px-1.5 text-[11px] font-medium tabular-nums text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40 disabled:opacity-60"
             >
               {retentionTargets.map((target) => (
                 <option key={target} value={target}>
@@ -96,47 +99,58 @@ export function ReviewTrail({
           )}
         </div>
       ) : (
-        <div className="min-h-0 overflow-y-auto p-2">
+        <div className="divide-y divide-[var(--border)] px-4">
           {visible.map((review) => (
             <div
               key={review.id}
-              className="group flex items-center gap-2 rounded-lg px-2.5 py-2 transition hover:bg-[var(--muted)]"
-            >
-              <Clock3
-                className={`h-3.5 w-3.5 shrink-0 ${review.due ? "text-[var(--primary)]" : "text-[var(--muted-foreground)]"}`}
-              />
+              className="py-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <button
                 type="button"
                 onClick={() => onSelect(review.knowledge_point_id)}
-                className="min-w-0 flex-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
-              >
-                <span className="block truncate text-xs font-medium text-[var(--foreground)]">
+                  aria-label={t('View learning evidence for {{name}}', {
+                    name: review.knowledge_point_name,
+                  })}
+                  className="min-w-0 flex-1 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                >
+                <span className="block break-words text-[13px] font-medium leading-5 text-[var(--foreground)]">
                   {review.knowledge_point_name}
                 </span>
-                <span className="text-[10px] text-[var(--muted-foreground)]">
+                <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-4 text-[var(--muted-foreground)]">
+                    <span
+                      className={`inline-flex items-center gap-1 ${review.due ? 'font-medium text-[var(--primary)]' : ''}`}
+                    >
+                      <Clock3 aria-hidden="true" className="h-3.5 w-3.5" />
                   {review.due
                     ? t("Ready now")
                     : formatRelative(review.due_at, zh)}
-                  <span className="ml-2">{t("risk {{risk}}%", { risk: Math.round(review.forgetting_risk * 100) })}</span>
-                  {review.recent_failure && (
-                    <span className="ml-2 text-red-600 dark:text-red-400">
-                      {t("recent failure")}
+                  </span>
+                    <span>
+                      {t("risk {{risk}}%", { risk: Math.round(review.forgetting_risk * 100) })}
                     </span>
+                  {review.recent_failure && (
+                    <span className="text-red-600 dark:text-red-400">{t("recent failure")}</span>
                   )}
-                </span>
-                <span className="block truncate text-[10px] text-[var(--muted-foreground)]">
-                  {review.reason}
                 </span>
               </button>
               <button
                 type="button"
                 aria-label={t("Start review for {{name}}", { name: review.knowledge_point_name })}
                 onClick={() => onStartReview(review.knowledge_point_id, review.knowledge_point_name)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)] hover:bg-[var(--accent)] hover:text-[var(--foreground)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]/40"
-              >
-                <Play className="h-3 w-3" />
-              </button>
-              <ArrowRight className="hidden h-3 w-3 text-[var(--muted-foreground)] transition-transform group-hover:translate-x-0.5 sm:block" />
+                className={`inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 self-start rounded-lg px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] ${review.due ? 'bg-[var(--primary)] text-[var(--primary-foreground)] hover:opacity-90' : 'border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--muted)]'}`}
+                >
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+                  {t('Start review')}
+                </button>
+              </div>
+              {review.reason && (
+                <details className="mt-2 text-[11px] leading-5 text-[var(--muted-foreground)]">
+                  <summary className="w-fit cursor-pointer rounded py-1 underline-offset-4 hover:text-[var(--foreground)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]">
+                    {t('Review rationale')}
+                  </summary>
+                  <p className="mt-1 break-words">{review.reason}</p>
+                </details>
+              )}
             </div>
           ))}
           {reviews.length > 5 && (

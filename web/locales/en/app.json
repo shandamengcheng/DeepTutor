@@ -5527,5 +5527,11 @@
   "Approve this MCP origin for private-network connections": "Approve this MCP origin for private-network connections",
   "Use an administrator-approved private MCP origin": "Use an administrator-approved private MCP origin",
   "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.": "Only this scheme, host and port can use private Docker or LAN addresses. Metadata addresses remain blocked.",
-  "This session belongs to a different learning section.": "This session belongs to a different learning section."
+  "This session belongs to a different learning section.": "This session belongs to a different learning section.",
+  "{{modules}} modules · {{points}} knowledge points": "{{modules}} modules · {{points}} knowledge points",
+  "Expand all modules": "Expand all modules",
+  "Collapse all modules": "Collapse all modules",
+  "{{mastered}} of {{total}} mastered": "{{mastered}} of {{total}} mastered",
+  "View learning evidence for {{name}}": "View learning evidence for {{name}}",
+  "Review rationale": "Review rationale"
 }
