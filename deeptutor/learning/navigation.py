@@ -296,6 +296,7 @@ async def topic_sessions(
                 "last_message": last_message[:240],
                 "pinned": bool(preferences.get("pinned")),
                 "archived": bool(preferences.get("archived")),
+                "mastery_section_id": str(preferences.get("mastery_section_id") or ""),
                 "has_pending_question": bool(
                     pending_session_id and pending_session_id == session_id
                 ),
@@ -325,6 +326,7 @@ def navigable_session_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "updated_at": row["updated_at"],
                 "running": bool(row["status"] == "running" or row["active_turn_id"]),
                 "awaiting_answer": row["has_pending_question"],
+                "mastery_section_id": row["mastery_section_id"],
                 "last_message": row["last_message"][:LAST_MESSAGE_CHARS],
             }
             for row in capped

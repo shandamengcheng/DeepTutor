@@ -268,7 +268,7 @@ def test_partner_group_reference_request_contract_is_normalized_and_snapshotted(
     assert references == [{"group_id": "study-panel", "session_key": "thread-a"}]
 
     metadata = _request_snapshot_metadata(
-        payload={},
+        payload={"mastery_section_id": "http-and-dns"},
         content="Use the attached panel",
         capability="chat",
         config={},
@@ -283,6 +283,7 @@ def test_partner_group_reference_request_contract_is_normalized_and_snapshotted(
         llm_selection=None,
     )
     assert metadata["request_snapshot"]["partnerGroupReferences"] == references
+    assert metadata["request_snapshot"]["masterySectionId"] == "http-and-dns"
 
 
 @pytest.mark.asyncio

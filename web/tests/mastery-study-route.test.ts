@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
-import { isMasteryDraftSessionReady } from "../lib/mastery-study-route";
+import {
+  isMasteryDraftSessionReady,
+  masterySectionRoute,
+} from "../lib/mastery-study-route";
 
 const base = {
   guard: {
@@ -51,6 +54,38 @@ test("an unbound draft stays on the sessionless study route", () => {
   assert.equal(isMasteryDraftSessionReady({ ...base, sessionId: null }), false);
 });
 
+test("entering a new section opens a fresh conversation", () => {
+  assert.equal(
+    masterySectionRoute({
+      pathId: "backend/expert",
+      sectionId: "http-and-dns",
+      courseId: "course backend",
+      sessions: [
+        {
+          session_id: "operating-system-chat",
+          mastery_section_id: "processes-and-threads",
+        },
+      ],
+    }),
+    "/learning/mastery/backend%2Fexpert/sessions?section=http-and-dns&course=course%20backend",
+  );
+});
+
+test("returning to a section restores that section's latest conversation", () => {
+  assert.equal(
+    masterySectionRoute({
+      pathId: "backend",
+      sectionId: "http",
+      courseId: "",
+      sessions: [
+        { session_id: "older", mastery_section_id: "http" },
+        { session_id: "newer", mastery_section_id: "http" },
+      ],
+    }),
+    "/learning/mastery/backend/sessions/older?section=http",
+  );
+});
+
 test("legacy /mastery/.../study URLs permanently redirect to /sessions", async () => {
   const nextConfig = require(path.resolve(process.cwd(), "next.config.js")) as {
     redirects?: () => Promise<
@@ -74,4 +109,17 @@ test("legacy /mastery/.../study URLs permanently redirect to /sessions", async (
       },
     ],
   );
+});
+
+
+test("archived section conversations are not offered when resuming learning", () => {
+  for (const active of [[], [{ session_id: "active", mastery_section_id: "http" }]]) {
+    const route = masterySectionRoute({
+      pathId: "backend", sectionId: "http", courseId: "",
+      sessions: [{ session_id: "archived", mastery_section_id: "http", archived: true }, ...active],
+    });
+    assert.equal(route, active.length
+      ? "/learning/mastery/backend/sessions/active?section=http"
+      : "/learning/mastery/backend/sessions?section=http");
+  }
 });

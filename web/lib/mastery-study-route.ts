@@ -1,6 +1,42 @@
+import { masterySessionRoute, masterySessionsRoute } from './learning-routes';
+
 export interface MasteryDraftRouteGuard {
   routeKey: string;
   previousSessionId: string | null;
+}
+
+export interface MasterySectionSession {
+  session_id: string;
+  mastery_section_id?: string;
+  archived?: boolean;
+}
+
+/** Route one outline section to its own durable conversation. */
+export function masterySectionRoute({
+  pathId,
+  sectionId,
+  courseId,
+  sessions,
+}: {
+  pathId: string;
+  sectionId: string;
+  courseId: string;
+  /** Most-recent first, matching the topic-sessions API. */
+  sessions: readonly MasterySectionSession[];
+}): string {
+  const cleanSectionId = sectionId.trim();
+  const existing = sessions.find(
+    (session) => !session.archived && session.mastery_section_id === cleanSectionId,
+  );
+  const base = existing
+    ? masterySessionRoute(pathId, existing.session_id)
+    : masterySessionsRoute(pathId);
+  const query = [
+    cleanSectionId ? `section=${encodeURIComponent(cleanSectionId)}` : "",
+    courseId.trim() ? `course=${encodeURIComponent(courseId.trim())}` : "",
+  ].filter(Boolean);
+  const suffix = query.join("&");
+  return suffix ? `${base}${base.includes('?') ? '&' : '?'}${suffix}` : base;
 }
 
 /**

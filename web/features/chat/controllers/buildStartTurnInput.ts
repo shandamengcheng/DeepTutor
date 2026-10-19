@@ -97,6 +97,7 @@ export function buildStartTurnInput(input: StartTurnInput): StartTurnCommand {
     workspace_mode: input.workspaceMode ?? null,
     mastery_path_id: input.masteryPathId ?? null,
     mastery_session_mode: input.masterySessionMode ?? null,
+    mastery_section_id: input.masterySectionId ?? null,
     mastery_path_lease_managed: input.masteryPathLeaseManaged ?? false,
     mastery_answer: input.masteryAnswer ?? null,
     mastery_skip: input.masterySkip ?? null,

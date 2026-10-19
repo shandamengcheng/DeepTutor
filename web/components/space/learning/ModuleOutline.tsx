@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ArrowRight,
   Check,
   ChevronRight,
   Circle,
@@ -22,6 +25,7 @@ import {
 
 import { knowledgeTypeLabel, topicDisplayName, type Translate } from "./format";
 import { ObjectiveDetail } from "./ObjectiveDetail";
+import { masterySectionRoute, type MasterySectionSession } from "@/lib/mastery-study-route";
 
 function statusLabel(point: MapKnowledgePoint, t: Translate) {
   if (point.mastery_source === "learner") return t("Marked as known");
@@ -82,8 +86,10 @@ export function ModuleOutline({
   zh,
   onSelect,
   onOverride,
+  sessions = [],
 }: {
   topic: MasteryTopic;
+  sessions?: readonly MasterySectionSession[];
   revision: number;
   selectedId: string | null;
   zh: boolean;
@@ -183,6 +189,8 @@ export function ModuleOutline({
                         key={point.id}
                         pathId={topic.path_id}
                         objectiveId={point.id}
+                        studyHref={masterySectionRoute({ pathId: topic.path_id, sectionId: point.id, courseId: "", sessions })}
+                        studyLabel={point.status === "new" ? t("Start learning") : t("Continue learning")}
                         revision={revision}
                         zh={zh}
                         onClose={() => onSelect(null)}
@@ -203,6 +211,8 @@ export function ModuleOutline({
 function ObjectiveDrawer({
   pathId,
   objectiveId,
+  studyHref,
+  studyLabel,
   revision,
   zh,
   onClose,
@@ -210,6 +220,8 @@ function ObjectiveDrawer({
 }: {
   pathId: string;
   objectiveId: string;
+  studyHref: string;
+  studyLabel: string;
   revision: number;
   zh: boolean;
   onClose: () => void;
@@ -279,6 +291,13 @@ function ObjectiveDrawer({
             </button>
           </div>
           <ObjectiveDetail report={report} zh={zh} />
+          <Link
+            href={studyHref}
+            className="mt-4 inline-flex min-h-9 items-center gap-2 rounded-xl bg-[var(--primary)] px-3 text-xs font-medium text-[var(--primary-foreground)] hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          >
+            {studyLabel}
+            <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
+          </Link>
 
           {!report.assessed_mastered && (
             <div className="mt-5 border-t border-[var(--border)] pt-4">

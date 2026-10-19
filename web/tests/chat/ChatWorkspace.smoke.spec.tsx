@@ -238,6 +238,7 @@ function emptyChatState(): ChatState {
     llmSelection: null,
     masteryPathId: null,
     masterySessionMode: null,
+    masterySectionId: null,
     workspaceId: null,
     courseId: '',
     personaSelection: '',

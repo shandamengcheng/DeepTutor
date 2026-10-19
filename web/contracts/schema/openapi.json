@@ -11180,6 +11180,18 @@
             ],
             "default": null,
             "title": "Workspace Mode"
+          },
+          "mastery_section_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mastery Section Id"
           }
         },
         "required": [

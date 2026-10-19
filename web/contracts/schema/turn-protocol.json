@@ -981,6 +981,18 @@
           "title": "Mastery Path Lease Managed",
           "type": "boolean"
         },
+        "mastery_section_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mastery Section Id"
+        },
         "mastery_session_mode": {
           "anyOf": [
             {

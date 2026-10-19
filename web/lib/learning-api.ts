@@ -574,6 +574,7 @@ export interface LearnerProfile {
 
 export interface TopicSession {
   session_id: string;
+  mastery_section_id?: string;
   title: string;
   created_at: number;
   updated_at: number;

@@ -163,6 +163,10 @@ class TurnRequest(BaseModel):
     #: read as the ordinary study session every mastery conversation was
     #: before kinds existed.
     mastery_session_mode: str | None = None
+    #: Knowledge point whose transcript this conversation owns. Keeping this
+    #: separate from the path cursor prevents the next section from inheriting
+    #: the previous section's visible chat history.
+    mastery_section_id: str | None = None
     mastery_path_lease_managed: bool = False
     mastery_answer: MasteryCardAnswer | None = None
     mastery_skip: MasteryCardSkip | None = None

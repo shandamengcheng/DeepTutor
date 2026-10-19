@@ -46,6 +46,7 @@ export function useMasteryStudySession(
    * let a link hand a session tools its kind withholds.
    */
   requestedMode: MasteryMode = "study",
+  requestedSectionId = "",
 ) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -59,7 +60,8 @@ export function useMasteryStudySession(
 
   const [topic, setTopic] = useState<MasteryTopic | null>(null);
   const [topicError, setTopicError] = useState<string | null>(null);
-  const currentRouteKey = `${pathId}:${routeSessionId || "new"}`;
+  const effectiveSectionId = requestedSectionId.trim();
+  const currentRouteKey = `${pathId}:${routeSessionId || "new"}:${effectiveSectionId}`;
   const [sessionResolution, setSessionResolution] = useState<{
     routeKey: string;
     error: string | null;
@@ -128,6 +130,7 @@ export function useMasteryStudySession(
       // Sent only when opening a new conversation; a route that names an
       // existing one leaves the stored kind alone (see the parameter's note).
       ...(routeSessionId ? {} : { masterySessionMode: requestedMode }),
+      ...(routeSessionId ? {} : { masterySectionId: effectiveSectionId || null }),
       // The study screen runs one action: the tutor loop. Stated here, at the
       // session's source of truth, rather than only asserted by the composer —
       // otherwise every configuration pass would reset it to chat and the
@@ -136,7 +139,7 @@ export function useMasteryStudySession(
       masteryPathId: pathId,
       knowledgeBases,
     }),
-    [knowledgeBases, pathId, requestedMode, routeSessionId],
+    [effectiveSectionId, knowledgeBases, pathId, requestedMode, routeSessionId],
   );
 
   // Only leaving the route cancels its load. A refreshed learning map must
@@ -190,6 +193,10 @@ export function useMasteryStudySession(
             ),
           );
         }
+        const selected = topicSessions.find(candidate => candidate.session_id === routeSessionId);
+        if (effectiveSectionId && selected?.mastery_section_id && selected.mastery_section_id !== effectiveSectionId) {
+          throw new Error(t("This session belongs to a different learning section."));
+        }
         const cached = showCachedSession(routeSessionId);
         if (cached) {
           configureSession(
@@ -222,6 +229,7 @@ export function useMasteryStudySession(
       });
   }, [
     courseId,
+    effectiveSectionId,
     configureSession,
     currentRouteKey,
     loadSession,
@@ -250,6 +258,7 @@ export function useMasteryStudySession(
     )
       return;
     const destination = new URL(existingMasterySessionRoute(pathId, newSessionId), window.location.origin);
+    if (effectiveSectionId) destination.searchParams.set("section", effectiveSectionId);
     if (courseId) destination.searchParams.set("course", courseId);
     router.replace(
       `${destination.pathname}${destination.search}`,
@@ -257,6 +266,7 @@ export function useMasteryStudySession(
     );
   }, [
     currentRouteKey,
+    effectiveSectionId,
     courseId,
     pathId,
     routeSessionId,

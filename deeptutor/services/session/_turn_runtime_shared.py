@@ -938,6 +938,9 @@ def _request_snapshot_metadata(
         value = payload.get(payload_key)
         if isinstance(value, dict) and value.get("question_id"):
             snapshot[snapshot_key] = dict(value)
+    mastery_section_id = str(payload.get("mastery_section_id") or "").strip()
+    if mastery_section_id:
+        snapshot["masterySectionId"] = mastery_section_id
     # Persisted so a regenerate re-runs with the same document open. Without it
     # the reading capability would be inactive on the retry and the answer would
     # silently lose its grounding.

@@ -46,6 +46,7 @@ export type QuestionId = string;
 export type Text = string;
 export type MasteryPathId = string | null;
 export type MasteryPathLeaseManaged = boolean;
+export type MasterySectionId = string | null;
 export type MasterySessionMode = string | null;
 export type QuestionId1 = string;
 export type Mcp = string[];
@@ -293,6 +294,7 @@ export interface StartTurnCommand {
   mastery_answer?: MasteryCardAnswer | null;
   mastery_path_id?: MasteryPathId;
   mastery_path_lease_managed?: MasteryPathLeaseManaged;
+  mastery_section_id?: MasterySectionId;
   mastery_session_mode?: MasterySessionMode;
   mastery_skip?: MasteryCardSkip | null;
   mcp?: Mcp;

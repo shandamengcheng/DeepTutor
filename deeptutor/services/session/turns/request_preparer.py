@@ -473,11 +473,25 @@ class TurnRequestPreparer:
         # never recorded a mode must stay unrecorded all the way down to the
         # tools, which read the absence as "enforce nothing".
         mastery_session_mode = enforced_mode(raw_mastery_mode)
+        requested_mastery_section_id = str(payload.get("mastery_section_id") or "").strip()
+        remembered_mastery_section_id = str(preferences.get("mastery_section_id") or "").strip()
+        if (
+            requested_mastery_section_id
+            and remembered_mastery_section_id
+            and requested_mastery_section_id != remembered_mastery_section_id
+        ):
+            raise RuntimeError("This conversation belongs to a different learning section.")
+        mastery_section_id = (
+            requested_mastery_section_id or remembered_mastery_section_id
+            if workspace_mode == WORKSPACE_MODE_MASTERY
+            else ""
+        )
         payload = {
             **payload,
             "mastery_path_id": mastery_path_id,
             "mastery_path_lease_managed": mastery_lease_managed,
             "mastery_session_mode": mastery_session_mode,
+            "mastery_section_id": mastery_section_id,
         }
         # Persona is a session-level preference (mirrors llm_selection): an
         # explicit ``persona`` key in the payload — including an empty string,
@@ -739,6 +753,8 @@ class TurnRequestPreparer:
             # opened and must survive every later turn that does not restate it.
             if mastery_session_mode:
                 preference_update["mastery_session_mode"] = mastery_session_mode
+            if mastery_section_id:
+                preference_update["mastery_section_id"] = mastery_section_id
         if workspace_mode == WORKSPACE_MODE_READING and reading_workspace_id:
             preference_update.update(
                 {
@@ -1116,6 +1132,11 @@ class TurnRequestPreparer:
                 overrides.get("mastery_session_mode")
                 if "mastery_session_mode" in overrides
                 else preferences.get("mastery_session_mode")
+            ),
+            "mastery_section_id": (
+                overrides.get("mastery_section_id")
+                if "mastery_section_id" in overrides
+                else snapshot.get("masterySectionId") or preferences.get("mastery_section_id")
             ),
             # Recovered from the original turn's snapshot so the regenerate runs
             # against the same document. An explicit override wins (the reader

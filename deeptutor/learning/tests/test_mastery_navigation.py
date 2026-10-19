@@ -223,6 +223,9 @@ async def test_mastery_topics_says_so_when_there_is_nothing_to_navigate(store):
 async def test_mastery_sessions_lists_the_conversations_on_one_topic(store, session_store):
     _create_topic()
     session = await session_store.create_session(title="Sampling questions")
+    await session_store.update_session_preferences(
+        session["id"], {"mastery_section_id": "sampling"}
+    )
     store.bind_session("stats_101", session["id"])
 
     payload = _payload(await MasterySessionsTool().execute(path_id="stats_101"))
@@ -230,6 +233,7 @@ async def test_mastery_sessions_lists_the_conversations_on_one_topic(store, sess
     assert payload["path_name"] == "Intro Statistics"
     assert [row["title"] for row in payload["sessions"]] == ["Sampling questions"]
     assert payload["sessions"][0]["awaiting_answer"] is False
+    assert payload["sessions"][0]["mastery_section_id"] == "sampling"
 
 
 @pytest.mark.asyncio

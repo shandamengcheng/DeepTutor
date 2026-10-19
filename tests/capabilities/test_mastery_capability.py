@@ -10,7 +10,10 @@ import pytest
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.mastery.capability import MasteryPathCapability
 from deeptutor.capabilities.mastery.loop import MasteryLoopCapability
-from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+from deeptutor.capabilities.mastery.pipeline import (
+    MasteryLoopPipeline,
+    MasteryPromptAssembler,
+)
 from deeptutor.core.context import UnifiedContext
 from deeptutor.learning.models import (
     InteractionStatus,
@@ -39,6 +42,20 @@ def _context() -> UnifiedContext:
         session_id="session-1",
         metadata={"mastery_mode": True, "mastery_path_id": "path-1", "turn_id": "turn-2"},
     )
+
+
+def test_section_conversation_names_its_exact_objective_in_the_prompt():
+    """A visible section title must also constrain what the tutor teaches."""
+    context = _context()
+    context.metadata["mastery_section_id"] = "kp-llm-context"
+
+    blocks = MasteryPromptAssembler(prompts={}, language="en").foundation_blocks(
+        context
+    )
+    scope = next(block for block in blocks if block.name == "mastery_section_scope")
+
+    assert "kp-llm-context" in scope.content
+    assert "teach or review only that objective" in scope.content
 
 
 def _progress_with_objective() -> LearningProgress:

@@ -12,12 +12,14 @@ export default function MasteryStudyPage() {
   // Only consulted when this route opens a *new* conversation; an existing
   // one carries the kind it was opened with.
   const requestedMode = normalizeMasteryMode(search.get("mode"));
+  const requestedSectionId = search.get("section")?.trim() ?? "";
 
   return (
     <MasteryStudy
       pathId={String(params.pathId || "")}
       courseId={courseId}
       requestedMode={requestedMode}
+      requestedSectionId={requestedSectionId}
     />
   );
 }

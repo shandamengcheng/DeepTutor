@@ -13,7 +13,7 @@ import pytest
 
 from deeptutor.agents.chat.agentic_pipeline import AgenticChatPipeline
 from deeptutor.capabilities.mastery.loop import NATIVE_LOOP_FLAG, MasteryLoopCapability
-from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline
+from deeptutor.capabilities.mastery.pipeline import MasteryLoopPipeline, MasteryPromptAssembler
 from deeptutor.capabilities.mastery.tools import MASTERY_TOOL_NAMES
 from deeptutor.core.context import UnifiedContext
 
@@ -85,6 +85,24 @@ def test_playbook_still_reaches_a_mastery_turn_running_on_chat() -> None:
     assert block is not None
     assert "mastery tutor" in block.content
     assert "mastery_quiz" in block.content
+
+
+def test_section_scoped_conversation_names_its_only_objective(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assembler = object.__new__(MasteryPromptAssembler)
+    monkeypatch.setattr(assembler, "_t", lambda key: key)
+    monkeypatch.setattr(assembler, "_runtime_context_block", lambda: "runtime")
+    context = UnifiedContext(
+        language="zh",
+        metadata={"mastery_session_mode": "study", "mastery_section_id": "http-dns"},
+    )
+
+    blocks = assembler.foundation_blocks(context)
+    scope = next(block for block in blocks if block.name == "mastery_section_scope")
+
+    assert "http-dns" in scope.content
+    assert "只属于知识点" in scope.content
 
 
 def test_tool_surface_matches_chat_plus_the_mastery_tools(

@@ -142,7 +142,13 @@ const STARTERS: Record<
  * highlights by id, so two knowledge points that happen to share a name
  * can no longer both light up.
  */
-function currentWaypoint(topic: MasteryTopic, fallback: string, t: Translate) {
+function currentWaypoint(topic: MasteryTopic, fallback: string, t: Translate, preferredPointId = "") {
+  if (preferredPointId) {
+    for (const region of topic.map.modules) {
+      const point = region.knowledge_points.find(item => item.id === preferredPointId);
+      if (point) return { id: point.id, name: point.name };
+    }
+  }
   if (topic.next.knowledge_point_name) {
     return {
       id: topic.next.knowledge_point_id,
@@ -166,12 +172,14 @@ export function MasteryStudy({
   routeSessionId,
   courseId = "",
   requestedMode = "study",
+  requestedSectionId = "",
 }: {
   pathId: string;
   routeSessionId?: string;
   courseId?: string;
   /** What a conversation opened here is for; ignored for an existing one. */
   requestedMode?: MasteryMode;
+  requestedSectionId?: string;
 }) {
   const { t } = useTranslation();
   const {
@@ -200,6 +208,7 @@ export function MasteryStudy({
     routeSessionId,
     courseId,
     requestedMode,
+    requestedSectionId,
   );
   const hasMessages = state.messages.length > 0;
   const prefillInputRef = useRef<((text: string) => void) | null>(null);
@@ -565,7 +574,7 @@ export function MasteryStudy({
   }
 
   const displayName = topicDisplayName(topic, t);
-  const waypoint = currentWaypoint(topic, displayName, t);
+  const waypoint = currentWaypoint(topic, displayName, t, requestedSectionId || state.masterySectionId || "");
   const completed = topic.map.counts.mastered;
   const total = topic.map.counts.total;
 

@@ -187,6 +187,7 @@ export interface ChatState {
    *  picks the tutor's prompt block and narrows its tool surface, so a session
    *  that changed it mid-way would hand itself tools its kind withholds. */
   masterySessionMode: string | null;
+  masterySectionId: string | null;
   /** Study course this conversation belongs to; "" = unclassified.
    *  Read by the composer's course pill and sent with every turn, so Course
    *  Study senses the same course the learner can see it is bound to. */
@@ -227,6 +228,7 @@ export interface SessionConfiguration {
   knowledgeBases?: string[];
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  masterySectionId?: string | null;
   workspaceId?: string | null;
   courseId?: string;
   enabledTools?: string[];
@@ -287,6 +289,7 @@ export interface MessageRequestSnapshot {
   readingReferences?: ReadingReferencePayload[];
   masteryPathId?: string;
   masterySessionMode?: string;
+  masterySectionId?: string;
   masteryAnswer?: { question_id: string; text: string };
   masterySkip?: { question_id: string };
   timedMediaId?: string;
@@ -369,6 +372,7 @@ interface SessionSnapshot {
   llmSelection?: LLMSelection | null;
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  masterySectionId?: string | null;
   workspaceId?: string | null;
   courseId?: string;
   personaSelection?: string;
@@ -489,6 +493,7 @@ function createSessionEntry(
     llmSelection: null,
     masteryPathId: null,
     masterySessionMode: null,
+    masterySectionId: null,
     workspaceId: activeWorkspaceId() || null,
     courseId: "",
     personaSelection: "",
@@ -596,6 +601,7 @@ function applySessionConfiguration(
       configuration.masterySessionMode !== undefined
         ? configuration.masterySessionMode
         : session.masterySessionMode,
+    masterySectionId: configuration.masterySectionId !== undefined ? configuration.masterySectionId : session.masterySectionId,
     workspaceId: configuration.workspaceId !== undefined ? configuration.workspaceId : session.workspaceId,
     courseId:
       configuration.courseId !== undefined
@@ -1174,6 +1180,7 @@ function reducer(state: ProviderState, action: Action): ProviderState {
               action.masterySessionMode !== undefined
                 ? action.masterySessionMode
                 : existing.masterySessionMode,
+            masterySectionId: action.masterySectionId !== undefined ? action.masterySectionId : existing.masterySectionId,
             workspaceId: action.workspaceId !== undefined ? action.workspaceId : existing.workspaceId,
             courseId:
               action.courseId !== undefined
@@ -1710,6 +1717,8 @@ function hydrateRequestSnapshot(
     typeof (stored.masteryPathId ?? stored.mastery_path_id) === "string"
       ? String(stored.masteryPathId ?? stored.mastery_path_id).trim()
       : "";
+  const masterySectionId = typeof (stored.masterySectionId ?? stored.mastery_section_id) === "string"
+    ? String(stored.masterySectionId ?? stored.mastery_section_id).trim() : "";
   const readingMaterialId = normalizeReadingMaterialId(
     stored.readingMaterialId ?? stored.reading_material_id,
   );
@@ -1737,6 +1746,7 @@ function hydrateRequestSnapshot(
   if (memoryReferences.length) snapshot.memoryReferences = memoryReferences;
   if (llmSelection) snapshot.llmSelection = llmSelection;
   if (masteryPathId) snapshot.masteryPathId = masteryPathId;
+  if (masterySectionId) snapshot.masterySectionId = masterySectionId;
   const masteryAnswer = asRecord(stored.masteryAnswer);
   if (typeof masteryAnswer?.question_id === "string" &&
       typeof masteryAnswer.text === "string") {
@@ -2512,6 +2522,7 @@ export function ChatStateAdapterProvider({
           typeof session.preferences?.mastery_session_mode === "string"
             ? session.preferences.mastery_session_mode
             : null,
+        masterySectionId: typeof session.preferences?.mastery_section_id === "string" ? session.preferences.mastery_section_id : null,
         // The server is the truth for which course a conversation belongs to:
         // it is set from the launch URL, from the composer's pill, and from the
         // sidebar's "move to course", and every one of those writes here.
@@ -2729,6 +2740,7 @@ export function ChatStateAdapterProvider({
       const effectiveMasterySessionMode =
         exactReplay ? (replaySnapshot?.masterySessionMode ?? null) :
         replaySnapshot?.masterySessionMode ?? session.masterySessionMode;
+      const effectiveMasterySectionId = replaySnapshot?.masterySectionId ?? session.masterySectionId;
       const effectiveLanguage =
         replaySnapshot?.language ??
         session.replyLanguageOverride ??
@@ -2869,6 +2881,7 @@ export function ChatStateAdapterProvider({
           : {}),
         ...(options?.masteryAnswer ? { masteryAnswer: options.masteryAnswer } : {}),
         ...(options?.masterySkip ? { masterySkip: options.masterySkip } : {}),
+        ...(effectiveMasterySectionId ? { masterySectionId: effectiveMasterySectionId } : {}),
         ...(effectivePersona ? { persona: effectivePersona } : {}),
         ...(effectiveMemoryReferences?.length
           ? { memoryReferences: [...effectiveMemoryReferences] }
@@ -3045,6 +3058,7 @@ export function ChatStateAdapterProvider({
         masterySessionMode: effectiveMasterySessionMode || null,
         masteryAnswer: options?.masteryAnswer ?? replaySnapshot?.masteryAnswer ?? null,
         masterySkip: options?.masterySkip ?? replaySnapshot?.masterySkip ?? null,
+        masterySectionId: effectiveMasterySectionId || null,
         // Immersive reading. Gated on the stable workspace mode as well as on
         // an open document: the reader outlives action switches and new
         // sessions, so Home must never inherit its source context.
@@ -3342,6 +3356,7 @@ export function ChatStateAdapterProvider({
       llmSelection: current.llmSelection,
       masteryPathId: current.masteryPathId,
       masterySessionMode: current.masterySessionMode,
+      masterySectionId: current.masterySectionId,
       workspaceId: current.workspaceId,
       courseId: current.courseId,
       personaSelection: current.personaSelection,

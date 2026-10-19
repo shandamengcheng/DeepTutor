@@ -16179,6 +16179,11 @@ export interface components {
        */
       readonly mastery_path_lease_managed: boolean;
       /**
+       * Mastery Section Id
+       * @default null
+       */
+      readonly mastery_section_id: string | null;
+      /**
        * Mastery Session Mode
        * @default null
        */

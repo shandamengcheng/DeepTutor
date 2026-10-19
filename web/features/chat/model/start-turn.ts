@@ -39,6 +39,7 @@ export interface StartTurnInput {
   workspaceMode?: string | null;
   masteryPathId?: string | null;
   masterySessionMode?: string | null;
+  masterySectionId?: string | null;
   masteryPathLeaseManaged?: boolean;
   masteryAnswer?: MasteryCardAnswer | null;
   masterySkip?: MasteryCardSkip | null;

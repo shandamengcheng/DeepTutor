@@ -998,6 +998,7 @@ class TurnExecutor:
                     # to reach the turn context, not just the payload. Raw:
                     # "never recorded" is a distinct state from any mode.
                     "mastery_session_mode": payload.get("mastery_session_mode"),
+                    "mastery_section_id": str(payload.get("mastery_section_id") or ""),
                     # The ruling this turn opened with, when it opened with one.
                     # The tutor reads it as a seed rather than grading again.
                     "mastery_card_grade": mastery_card_grade or {},

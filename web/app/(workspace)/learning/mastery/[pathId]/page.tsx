@@ -573,6 +573,7 @@ export default function MasteryTopicPage() {
                   zh={zh}
                   onSelect={setSelectedId}
                   onOverride={handleOverride}
+                  sessions={sessions}
                 />
               ) : board ? (
                 <LearningBoard
