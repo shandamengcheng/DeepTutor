@@ -414,7 +414,11 @@ class AgenticLoopPipeline:
             if use_native_tools or use_text_tools
             else None
         )
-        tool_schemas = tool_schema_catalog if use_native_tools else None
+        # A selected CLI Agent cannot receive provider-native function calls,
+        # but its adapter still needs the exact schemas so it can teach the
+        # model our text (DSML) wire contract.  The normal loop parser turns
+        # that markup back into structured calls before dispatch.
+        tool_schemas = tool_schema_catalog if use_native_tools or use_text_tools else None
         if tool_schema_catalog is not None and self._tool_view is not None:
             self._tool_view.attach(tool_schema_catalog)
         if tool_schema_catalog:

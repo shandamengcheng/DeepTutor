@@ -2328,6 +2328,82 @@ async def test_selected_local_agent_dsml_still_dispatches_capability_tools(
 
 
 @pytest.mark.asyncio
+async def test_selected_local_agent_is_told_how_to_call_capability_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    """The CLI model receives schemas plus the DSML wire contract it must emit."""
+    from deeptutor.capabilities.subagent.model_runtime import selected_subagent_scope
+    from deeptutor.services.subagent import sessions as subagent_sessions
+    from deeptutor.services.subagent.types import ConsultResult
+
+    class _PausingRegistry(_Registry):
+        async def execute(self, name: str, **kwargs):
+            self.executed.append({"name": name, "kwargs": kwargs})
+            return ToolResult(
+                content="Asked the user.",
+                success=True,
+                pause_for_user={"questions": kwargs["questions"]},
+            )
+
+    class _ProtocolAwareBackend:
+        prompts: list[str] = []
+
+        async def consult(
+            self, question, *, on_event, cwd, session_id, config, images=None, partner_id=None
+        ):
+            self.prompts.append(question)
+            if "[DeepTutor tool protocol]" not in question or '"name":"ask_user"' not in question:
+                return ConsultResult(
+                    final_text="I cannot call the requested DeepTutor tool.",
+                    session_id="local-session",
+                    success=True,
+                )
+            return ConsultResult(
+                final_text=(
+                    '<tool_calls><invoke name="ask_user">'
+                    '<parameter name="questions">'
+                    '[{"id":"q1","prompt":"Explain it in your own words."}]'
+                    "</parameter></invoke></tool_calls>"
+                ),
+                session_id="local-session",
+                success=True,
+            )
+
+    backend = _ProtocolAwareBackend()
+    monkeypatch.setattr(
+        "deeptutor.multi_user.knowledge_access.resolve_kb_metadata",
+        lambda ref: (
+            {"name": ref, "type": "subagent", "agent_kind": "codex", "cwd": ""}
+            if ref == "local-agent"
+            else {"name": ref, "type": None}
+        ),
+    )
+    monkeypatch.setattr("deeptutor.services.subagent.get_backend", lambda kind: backend)
+    monkeypatch.setattr(subagent_sessions, "_path", lambda: tmp_path / "subagent_sessions.json")
+
+    registry = _PausingRegistry()
+    context = UnifiedContext(
+        session_id="local-mastery-protocol",
+        user_message="Continue",
+        knowledge_bases=["local-agent"],
+        enabled_tools=["ask_user"],
+    )
+    with selected_subagent_scope(context):
+        pipeline = AgenticChatPipeline(language="en")
+        pipeline.registry = registry
+        monkeypatch.setattr(pipeline, "_compose_enabled_tools", lambda _context: ["ask_user"])
+        events = await _run(pipeline, context)
+
+    assert len(registry.executed) == 1
+    assert registry.executed[0]["name"] == "ask_user"
+    assert registry.executed[0]["kwargs"]["questions"] == [
+        {"id": "q1", "prompt": "Explain it in your own words."}
+    ]
+    assert _result(events).metadata["completed"] is False
+
+
+@pytest.mark.asyncio
 async def test_dsml_container_schema_survives_native_tool_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2499,6 +2575,9 @@ async def test_cold_start_stalled_provider_settles_with_bounded_retries(monkeypa
             await asyncio.wait_for(
                 pipeline.run(UnifiedContext(session_id="cold", user_message="Hello"), bus), 1
             )
+        # Drain the asynchronous event consumer before inspecting its trace.
+        await bus.close()
+        await consumer
         assert failure.value.retryable
         assert len(attempts) == (1 if phase == "partial_stream" else 3)
         assert failure.value.partial_response is (phase == "partial_stream")

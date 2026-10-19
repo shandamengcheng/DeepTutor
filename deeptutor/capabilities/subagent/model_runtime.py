@@ -107,17 +107,62 @@ def _tool_calls_text(tool_calls: Any) -> str:
     return json.dumps(portable, ensure_ascii=False, separators=(",", ":"))
 
 
+def _tool_protocol(tools: Any, tool_choice: Any = None) -> str:
+    """Describe the text wire format a CLI Agent must use for host tools.
+
+    A connected CLI is the model transport, not the executor for DeepTutor's
+    capability tools.  It therefore receives the same schemas as a native
+    provider, but returns calls as DSML-like markup in its text response.  The
+    agent loop already parses this format and dispatches it through the normal
+    registry, preserving validation, authorization, traces, and pause cards.
+    """
+
+    schemas = [item for item in tools or [] if isinstance(item, dict)]
+    if not schemas:
+        return ""
+    forced_name = ""
+    if isinstance(tool_choice, dict):
+        function = tool_choice.get("function")
+        if isinstance(function, dict):
+            forced_name = str(function.get("name") or "").strip()
+    forced = (
+        f" You must call `{forced_name}` in this response."
+        if forced_name
+        else " Call a tool only when the system instructions require or justify it."
+    )
+    schema_text = json.dumps(schemas, ensure_ascii=False, separators=(",", ":"))
+    return (
+        "[DeepTutor tool protocol]\n"
+        "DeepTutor, not your CLI runtime, owns and executes the tools below."
+        f"{forced}\n"
+        "To call one or more tools, emit only this XML-like envelope for the calls "
+        "(learner-facing prose may appear before it):\n"
+        '<tool_calls><invoke name="tool_name"><parameter name="argument_name">'
+        "argument value</parameter></invoke></tool_calls>\n"
+        "Use one <parameter> per argument. Encode object and array values as JSON; "
+        "write string values as plain text and numbers/booleans as JSON scalars. "
+        "Never claim that a tool was called unless you emitted this envelope. "
+        "After emitting calls, stop so DeepTutor can execute them and return results.\n"
+        f"Available tool schemas: {schema_text}"
+    )
+
+
 def _render_request(
     *,
     prompt: str,
     system_prompt: str,
     messages: list[dict[str, Any]] | None,
+    tools: Any = None,
+    tool_choice: Any = None,
 ) -> str:
     """Preserve role instructions when adapting a completion to a CLI agent."""
 
     rendered: list[str] = []
     if system_prompt.strip():
         rendered.append(f"[System instructions]\n{system_prompt.strip()}")
+    protocol = _tool_protocol(tools, tool_choice)
+    if protocol:
+        rendered.append(protocol)
     for message in messages or []:
         raw_role = str(message.get("role") or "user").strip().lower()
         role = raw_role.title()
@@ -142,6 +187,8 @@ async def complete_with_selected_subagent(
     prompt: str,
     system_prompt: str,
     messages: list[dict[str, Any]] | None,
+    tools: Any = None,
+    tool_choice: Any = None,
 ) -> str | None:
     """Return a connected-agent completion, or ``None`` outside such a turn.
 
@@ -159,6 +206,8 @@ async def complete_with_selected_subagent(
         prompt=prompt,
         system_prompt=system_prompt,
         messages=messages,
+        tools=tools,
+        tool_choice=tool_choice,
     )
     result = await consult_selected_subagent(context, request)
     if result is None:
@@ -211,6 +260,8 @@ class _SelectedSubagentCompletions:
             prompt="",
             system_prompt="",
             messages=kwargs.get("messages") or [],
+            tools=kwargs.get("tools"),
+            tool_choice=kwargs.get("tool_choice"),
         )
         if text is None:
             raise RuntimeError("Selected local Agent scope disappeared during model execution")
