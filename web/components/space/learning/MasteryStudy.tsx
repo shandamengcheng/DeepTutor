@@ -8,6 +8,7 @@ import Tooltip from "@/shared/ui/Tooltip";
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
@@ -54,6 +55,7 @@ import {
   type MasteryMode,
 } from "@/lib/mastery-mode";
 import { workspaceActionNeedsConfiguration } from "@/lib/workspace-mode";
+import { masterySectionRoute } from "@/lib/mastery-study-route";
 
 import { ActivityHeader } from "@/components/activity";
 
@@ -179,8 +181,10 @@ export function MasteryStudy({
   courseId?: string;
   /** What a conversation opened here is for; ignored for an existing one. */
   requestedMode?: MasteryMode;
+  /** Knowledge point whose independent conversation this route opens. */
   requestedSectionId?: string;
 }) {
+  const router = useRouter();
   const { t } = useTranslation();
   const {
     state,
@@ -203,6 +207,7 @@ export function MasteryStudy({
     sessionError,
     sessionLoading,
     sessionMode,
+    topicSessions,
   } = useMasteryStudySession(
     pathId,
     routeSessionId,
@@ -578,6 +583,23 @@ export function MasteryStudy({
   const completed = topic.map.counts.mastered;
   const total = topic.map.counts.total;
 
+  const openSection = (sectionId: string) => {
+    if (
+      state.isStreaming ||
+      sessionLoading ||
+      sectionId === state.masterySectionId
+    )
+      return;
+    router.push(
+      masterySectionRoute({
+        pathId,
+        sectionId,
+        courseId,
+        sessions: topicSessions,
+      }),
+    );
+  };
+
   return (
     <main className="mastery-shell flex h-full min-h-0 flex-col overflow-hidden">
       {/* One line, not two: the topic and the waypoint the tutor is on read
@@ -668,6 +690,8 @@ export function MasteryStudy({
             justMasteredId={celebration?.pointId ?? null}
             collapsed={!outlineOpen}
             onToggleCollapsed={toggleOutline}
+            onSelectPoint={(point) => openSection(point.id)}
+            disabled={state.isStreaming || sessionLoading}
           />
         </aside>
 

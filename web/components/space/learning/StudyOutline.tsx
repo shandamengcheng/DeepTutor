@@ -60,6 +60,8 @@ export function StudyOutline({
   justMasteredId,
   collapsed,
   onToggleCollapsed,
+  onSelectPoint,
+  disabled = false,
 }: {
   topic: MasteryTopic;
   /** The waypoint the tutor is on — highlighted, never a link. */
@@ -68,6 +70,9 @@ export function StudyOutline({
   justMasteredId?: string | null;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  /** Open the independent conversation owned by this knowledge point. */
+  onSelectPoint: (point: MapKnowledgePoint) => void;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const { mastered, total } = topic.map.counts;
@@ -140,14 +145,18 @@ export function StudyOutline({
                 const justMastered = point.id === justMasteredId;
                 return (
                   <li key={point.id} className="relative">
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => onSelectPoint(point)}
+                      disabled={disabled}
+                      aria-current={current ? "step" : undefined}
                       className={`flex items-start gap-2 rounded-md py-[5px] pl-[18px] pr-2 ${
                         justMastered
                           ? "mastery-just-mastered-row"
                           : current
                             ? "bg-[color-mix(in_srgb,var(--primary)_7%,transparent)]"
                             : ""
-                      }`}
+                      } w-full text-left transition-colors hover:bg-[var(--muted)]/55 disabled:cursor-wait disabled:opacity-60`}
                     >
                       <span
                         className={`relative z-[1] flex h-[18px] w-[7px] shrink-0 items-center justify-center ${
@@ -173,7 +182,7 @@ export function StudyOutline({
                       >
                         {point.name}
                       </span>
-                    </div>
+                    </button>
                   </li>
                 );
               })}

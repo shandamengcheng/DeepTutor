@@ -9,6 +9,7 @@ import { useMasteryStudySession } from "@/hooks/useMasteryStudySession";
 import { useMasteryOpening } from "@/hooks/useMasteryOpening";
 import { isMasteryDraftSendReady } from "@/lib/mastery-study-route";
 import { setPendingPrompt } from "@/lib/pending-prompt";
+import type { MasteryMode } from "@/lib/mastery-mode";
 import { MASTERY_OPENING_SCOPE } from "@/lib/mastery-mode";
 import { initI18n } from "@/i18n/init";
 
@@ -78,16 +79,18 @@ const topic = (pathId: string) => ({
 function Harness({
   pathId,
   sessionId,
+  mode = "outline",
 }: {
   pathId: string;
   sessionId?: string;
+  mode?: MasteryMode;
 }) {
   const { state, sendMessage } = useChatStateAdapter();
   const session = useMasteryStudySession(
     pathId,
     sessionId,
     "",
-    "outline",
+    mode,
   );
   const submit = useCallback(
     (content: string) => {
@@ -142,6 +145,7 @@ beforeEach(() => {
   mocks.emit = undefined;
   mocks.topic.mockReset();
   mocks.sessions.mockReset();
+  mocks.sessions.mockResolvedValue([]);
   mocks.getSession.mockReset();
   mocks.replace.mockClear();
 });
@@ -339,4 +343,23 @@ it("only admits the exact committed draft and configuration", () => {
     expect(isMasteryDraftSendReady({ ...ready, ...override })).toBe(
       false,
     );
+});
+
+
+it.each([undefined, "original_point"])("opens a saved study session with section %s independently of global next", async (section) => {
+  mocks.topic.mockResolvedValue({ ...topic("topic_created"), next: { knowledge_point_id: "global_next" } });
+  mocks.sessions.mockResolvedValue([{ session_id: "session_saved", mastery_section_id: section }]);
+  mocks.getSession.mockResolvedValue({ session_id: "session_saved", messages: [], preferences: {
+    workspace_mode: "mastery_path", mastery_path_id: "topic_created",
+    mastery_session_mode: "study", mastery_section_id: section,
+  } });
+  const rendered = render(<ChatStateAdapterProvider><Harness pathId="topic_created" sessionId="session_saved" mode="study" /></ChatStateAdapterProvider>);
+  await waitFor(() => expect(screen.getByTestId("loading")).toHaveTextContent("false"));
+  const loads = mocks.getSession.mock.calls.length;
+  mocks.topic.mockResolvedValue({ ...topic("topic_created"), next: { knowledge_point_id: "another_next" } });
+  mocks.revision++;
+  rendered.rerender(<ChatStateAdapterProvider><Harness pathId="topic_created" sessionId="session_saved" mode="study" /></ChatStateAdapterProvider>);
+  await waitFor(() => expect(mocks.topic.mock.calls.length).toBeGreaterThan(1));
+  expect(mocks.getSession).toHaveBeenCalledTimes(loads);
+  expect(screen.getByTestId("loading")).toHaveTextContent("false");
 });

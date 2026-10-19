@@ -16,6 +16,7 @@ import {
   fetchMasteryTopic,
   fetchMasteryTopicSessions,
   type MasteryTopic,
+  type TopicSession,
 } from "@/lib/learning-api";
 import {
   isMasteryDraftSessionReady,
@@ -60,7 +61,8 @@ export function useMasteryStudySession(
 
   const [topic, setTopic] = useState<MasteryTopic | null>(null);
   const [topicError, setTopicError] = useState<string | null>(null);
-  const effectiveSectionId = requestedSectionId.trim();
+  const [topicSessions, setTopicSessions] = useState<TopicSession[]>([]);
+  const effectiveSectionId = requestedMode === "study" ? requestedSectionId.trim() : "";
   const currentRouteKey = `${pathId}:${routeSessionId || "new"}:${effectiveSectionId}`;
   const [sessionResolution, setSessionResolution] = useState<{
     routeKey: string;
@@ -111,6 +113,19 @@ export function useMasteryStudySession(
     if (wasStreamingRef.current && !streaming) refreshActivity();
     wasStreamingRef.current = streaming;
   }, [refreshActivity, state.isStreaming]);
+  useEffect(() => {
+    let active = true;
+    void fetchMasteryTopicSessions(pathId, { cache: "no-store" })
+      .then((sessions) => {
+        if (active) setTopicSessions(sessions);
+      })
+      .catch(() => {
+        if (active) setTopicSessions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activity.revision, pathId]);
 
   const knowledgeBases = useMemo(
     () =>
@@ -182,6 +197,7 @@ export function useMasteryStudySession(
     void fetchMasteryTopicSessions(pathId, { cache: "no-store" })
       .then((topicSessions) => {
         if (controller.signal.aborted) return;
+        setTopicSessions(topicSessions);
         if (
           !topicSessions.some(
             (candidate) => candidate.session_id === routeSessionId,
@@ -194,7 +210,9 @@ export function useMasteryStudySession(
           );
         }
         const selected = topicSessions.find(candidate => candidate.session_id === routeSessionId);
-        if (effectiveSectionId && selected?.mastery_section_id && selected.mastery_section_id !== effectiveSectionId) {
+        if (
+          requestedSectionId && selected?.mastery_section_id && selected.mastery_section_id !== requestedSectionId
+        ) {
           throw new Error(t("This session belongs to a different learning section."));
         }
         const cached = showCachedSession(routeSessionId);
@@ -229,12 +247,12 @@ export function useMasteryStudySession(
       });
   }, [
     courseId,
-    effectiveSectionId,
     configureSession,
     currentRouteKey,
     loadSession,
     newSession,
     pathId,
+    requestedSectionId,
     routeSessionId,
     sessionConfiguration,
     showCachedSession,
@@ -266,9 +284,9 @@ export function useMasteryStudySession(
     );
   }, [
     currentRouteKey,
-    effectiveSectionId,
     courseId,
     pathId,
+    effectiveSectionId,
     routeSessionId,
     router,
     state.masteryPathId,
@@ -283,7 +301,9 @@ export function useMasteryStudySession(
     topic?.path_id === pathId &&
     state.workspaceMode === MASTERY_WORKSPACE_MODE &&
     state.masteryPathId === pathId;
-  const sessionLoading = routeSessionId
+  const sessionLoading =
+    (!routeSessionId && Boolean(effectiveSectionId) && state.masterySectionId !== effectiveSectionId) ||
+    (routeSessionId
     ? sessionResolution?.routeKey !== currentRouteKey ||
       (!sessionError && (!bindingMatches || state.sessionId !== routeSessionId))
     : !bindingMatches ||
@@ -305,7 +325,7 @@ export function useMasteryStudySession(
           masteryPathId: state.masteryPathId,
           pathId,
         })
-      );
+      ));
 
   // The kind actually in force: what the server remembers for an existing
   // conversation, and what this route asked for while a new one is still
@@ -320,5 +340,6 @@ export function useMasteryStudySession(
     sessionError,
     sessionLoading,
     sessionMode,
+    topicSessions,
   };
 }
