@@ -12,6 +12,7 @@ const {
   launcherPaths,
   pythonCandidates,
   readLauncherState,
+  resolvePython,
 } = require("../src/runtime");
 
 const http = require("node:http");
@@ -109,4 +110,15 @@ test("requires an actual HTTP response before reusing a ready runtime", async (c
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
   assert.equal(await isFrontendReady(`http://127.0.0.1:${address.port}`, 50), false);
+});
+
+
+test("Python discovery leaves the signed application sources unchanged", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "deeptutor-python-probe-"));
+  try {
+    fs.writeFileSync(path.join(root, "deeptutor_cli.py"), "PROBE = True\n");
+    const python = "/usr/bin/python3";
+    assert.equal(resolvePython(root, { DEEPTUTOR_PYTHON: python, PYTHONDONTWRITEBYTECODE: "", PYTHONPYCACHEPREFIX: path.join(root, "bytecode") }), python);
+    assert.equal(fs.existsSync(path.join(root, "bytecode")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

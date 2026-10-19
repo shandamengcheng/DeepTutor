@@ -141,7 +141,7 @@ function pythonCandidates(projectRoot, environment = process.env, bundledPython 
 }
 
 function resolvePython(projectRoot, environment = process.env, bundledPython = null) {
-  const probeEnvironment = prependPythonPath({ ...environment }, projectRoot);
+  const probeEnvironment = prependPythonPath({ ...environment, PYTHONDONTWRITEBYTECODE: "1" }, projectRoot);
   for (const candidate of pythonCandidates(projectRoot, environment, bundledPython)) {
     const result = spawnSync(candidate, ["-c", "import deeptutor_cli"], {
       cwd: projectRoot || os.homedir(),
