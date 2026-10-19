@@ -96,25 +96,23 @@ function installCurrentPythonSources(sitePackages) {
 
 function preparePackagedWeb(sitePackages) {
   const webRoot = path.join(projectRoot, "web");
-  let distName = [".next-desktop", ".next-deeptutor", ".next"].find((name) =>
-    fs.existsSync(path.join(webRoot, name, "standalone", "server.js")),
-  );
-  if (!distName) distName = ".next-desktop";
-  let dist = path.join(webRoot, distName);
-  let standalone = path.join(dist, "standalone");
-  if (!fs.existsSync(path.join(standalone, "server.js"))) {
-    run("npm", ["run", "build"], {
-      cwd: webRoot,
-      env: {
-        ...process.env,
-        DEEPTUTOR_NEXT_DIST_DIR: distName,
-        NEXT_PUBLIC_API_BASE: "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__",
-        NEXT_PUBLIC_AUTH_ENABLED: "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__",
-      },
-    });
-    dist = path.join(webRoot, distName);
-    standalone = path.join(dist, "standalone");
-  }
+  const distName = ".next-desktop";
+  // A standalone server is not evidence that it was built from the current
+  // checkout. Reusing one packaged an old frontend beside freshly copied
+  // Python sources, so the window showed the new mastery screen while turns
+  // were still submitted as ordinary chat. Packaging is a release boundary:
+  // always rebuild it from the sources being bundled.
+  run("npm", ["run", "build"], {
+    cwd: webRoot,
+    env: {
+      ...process.env,
+      DEEPTUTOR_NEXT_DIST_DIR: distName,
+      NEXT_PUBLIC_API_BASE: "__NEXT_PUBLIC_API_BASE_PLACEHOLDER__",
+      NEXT_PUBLIC_AUTH_ENABLED: "__NEXT_PUBLIC_AUTH_ENABLED_PLACEHOLDER__",
+    },
+  });
+  const dist = path.join(webRoot, distName);
+  const standalone = path.join(dist, "standalone");
   if (!fs.existsSync(path.join(standalone, "server.js"))) {
     throw new Error(`Missing packaged Web server at ${path.join(standalone, "server.js")}`);
   }
