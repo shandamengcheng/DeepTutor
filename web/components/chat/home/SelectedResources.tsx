@@ -1,7 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Local attachment previews use object URLs. */
 import { useState } from "react";
-import { AnimatePresence, m as motion, useReducedMotion } from "framer-motion";
 import { Pin, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useResourceReuse, ResourceReuseControl } from "./ResourceReuse";
@@ -31,27 +30,20 @@ export default function SelectedResources({
 }) {
   const { t } = useTranslation();
   const reuse = useResourceReuse();
-  const reduced = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
   const [editFiles, setEditFiles] = useState(false);
   if (!items.length) return null;
   const visible = expanded ? items : items.slice(0, 4);
   return (
-    <div className="px-3 pt-2.5 pb-1" aria-label={t("Selected resources")}>
-      <div className="flex flex-wrap gap-1.5">
-        <AnimatePresence initial={false}>
+    <div className="min-w-0 px-4 pt-3" aria-label={t("Selected resources")}>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           {visible.map((item) => {
             const kind = kinds[item.key.split("-")[0]];
             const repeat = kind && reuse?.policy[kind];
             return (
-              <motion.div
+              <div
                 key={item.key}
-                layout="position"
-                initial={{ opacity: 0, scale: reduced ? 1 : 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: reduced ? 1 : 0.96 }}
-                transition={{ duration: reduced ? 0 : 0.14 }}
-                className="inline-flex max-w-[240px] items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/35 px-2 py-1 text-[11px]"
+                className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--muted)]/35 px-2 py-0.5 text-[11px] sm:max-w-[240px]"
               >
                 <button
                   type="button"
@@ -99,10 +91,9 @@ export default function SelectedResources({
                     </button>
                   </Tooltip>
                 )}
-              </motion.div>
+              </div>
             );
           })}
-        </AnimatePresence>
         {items.length > 4 && (
           <button
             type="button"
