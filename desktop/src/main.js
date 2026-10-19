@@ -103,19 +103,48 @@ function createWindow() {
       if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
     }
   });
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", () => {
+    if (!shutdownStarted && !window.isDestroyed()) window.show();
+  });
+  window.once("closed", () => {
+    if (mainWindow === window) mainWindow = null;
+  });
   window.on("close", (event) => {
     if (shouldHideOnClose({ shutdownStarted, hideOnClose: settings.hideOnClose })) {
       event.preventDefault();
       window.hide();
     }
   });
-  void window.loadURL(loadingDocument("正在启动你的本地 DeepTutor…"));
   return window;
 }
 
+function ensureWindow() {
+  if (shutdownStarted || !settings) return null;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    mainWindow = createWindow();
+  }
+  return mainWindow;
+}
+
+function showWindow() {
+  const needsNavigation = !mainWindow || mainWindow.isDestroyed();
+  const window = ensureWindow();
+  if (!window) return;
+  if (needsNavigation) {
+    void window.loadURL(runtime?.state?.frontend_url || loadingDocument("正在启动你的本地 DeepTutor…"))
+      .catch((error) => console.error("DeepTutor 页面加载失败:", error));
+  }
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+}
+
 function toggleWindow() {
-  if (!mainWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    showWindow();
+    return;
+  }
+  if (shutdownStarted) return;
   if (mainWindow.isVisible()) {
     mainWindow.hide();
   } else {
@@ -230,7 +259,10 @@ async function launchRuntime() {
     bundledPython,
     bundledNode,
   });
-  await mainWindow.loadURL(runtime.state.frontend_url);
+  const window = ensureWindow();
+  if (window) {
+    await window.loadURL(runtime.state.frontend_url);
+  }
 }
 
 async function restartOwnedRuntime() {
@@ -241,7 +273,9 @@ async function restartOwnedRuntime() {
     });
     return;
   }
-  await mainWindow.loadURL(loadingDocument("正在应用设置并重启 DeepTutor…"));
+  const window = ensureWindow();
+  if (!window) return;
+  await window.loadURL(loadingDocument("正在应用设置并重启 DeepTutor…"));
   await stopRuntime({
     runtimeHome,
     projectRoot,
@@ -261,6 +295,8 @@ app.whenReady().then(async () => {
   projectRoot = bundledPython ? null : resolveProjectRoot();
   settings = loadDesktopSettings(runtimeHome);
   mainWindow = createWindow();
+  void mainWindow.loadURL(loadingDocument("正在启动你的本地 DeepTutor…"))
+    .catch((error) => console.error("DeepTutor 启动页加载失败:", error));
   createTray();
   registerShortcut();
   try {
@@ -270,9 +306,11 @@ app.whenReady().then(async () => {
     );
     if (automaticQuitDelay !== null) setTimeout(() => app.quit(), automaticQuitDelay);
   } catch (error) {
+    const window = ensureWindow();
+    if (!window) return;
     const detail = error instanceof Error ? error.message : String(error);
-    await mainWindow.loadURL(loadingDocument("DeepTutor 启动失败，请检查提示和运行日志。"));
-    await dialog.showMessageBox(mainWindow, {
+    await window.loadURL(loadingDocument("DeepTutor 启动失败，请检查提示和运行日志。"));
+    await dialog.showMessageBox(window, {
       type: "error",
       title: "DeepTutor 启动失败",
       message: "桌面应用无法启动本地 DeepTutor 服务。",
@@ -284,16 +322,9 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("activate", () => {
-  if (mainWindow) toggleWindow();
-});
+app.on("activate", showWindow);
 
-app.on("second-instance", () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.show();
-  mainWindow.focus();
-});
+app.on("second-instance", showWindow);
 
 app.on("window-all-closed", () => {
   // The menu-bar assistant remains available until the user explicitly quits.
