@@ -13,6 +13,7 @@ import sys
 
 import pytest
 
+from deeptutor.services.subagent import codex as codex_mod
 from deeptutor.services.subagent import process as process_mod
 from deeptutor.services.subagent.claude_code import ClaudeCodeBackend
 from deeptutor.services.subagent.codex import CodexBackend
@@ -607,6 +608,55 @@ async def test_codex_item_updated_streams_cumulative_answer() -> None:
 
 
 @pytest.mark.asyncio
+async def test_codex_item_updated_answer_survives_empty_completion() -> None:
+    """Keep the streamed answer when Codex omits text from the completion frame."""
+    backend = CodexBackend()
+    result = ConsultResult()
+
+    async def emit(kind, text, raw, meta=None):
+        return None
+
+    for event in (
+        {
+            "type": "item.updated",
+            "item": {"id": "m1", "type": "agent_message", "text": "streamed answer"},
+        },
+        {"type": "item.completed", "item": {"id": "m1", "type": "agent_message"}},
+        {"type": "turn.completed", "usage": {}},
+    ):
+        await backend._handle_event(event, result, emit)
+
+    assert result.final_text == "streamed answer"
+
+
+@pytest.mark.asyncio
+async def test_codex_recovers_final_answer_from_output_file(monkeypatch) -> None:
+    """The stable CLI output file backs up an incomplete JSON event stream."""
+
+    async def fake_stream(cmd, *, cwd=None):
+        output_path = cmd[cmd.index("-o") + 1]
+        from pathlib import Path
+
+        Path(output_path).write_text("answer from output file\n", encoding="utf-8")
+        yield "stdout", '{"type":"thread.started","thread_id":"t1"}'
+        yield "stdout", '{"type":"turn.completed","usage":{}}'
+        yield "exit", "0"
+
+    monkeypatch.setattr(codex_mod, "stream_process_lines", fake_stream)
+    backend = CodexBackend()
+    emitted = []
+
+    async def on_event(event):
+        emitted.append((event.kind, event.text))
+
+    result = await backend.consult("question", on_event=on_event)
+
+    assert result.success is True
+    assert result.final_text == "answer from output file"
+    assert ("text", "answer from output file") in emitted
+
+
+@pytest.mark.asyncio
 async def test_codex_turn_failed_marks_error() -> None:
     backend = CodexBackend()
     result, emitted = await _drive(backend, [{"type": "turn.failed", "message": "boom"}])
@@ -827,6 +877,9 @@ def test_session_registry_roundtrip(monkeypatch, tmp_path) -> None:
     sess.forget_connection("agentX")
     assert sess.get_session(key) is None
     assert sess.get_session("chat1::other") == "sid-2"
+
+    sess.forget_session("chat1::other")
+    assert sess.get_session("chat1::other") is None
 
     # Empty session id is a no-op (never persisted).
     sess.remember_session("chat1::agentZ", "")
@@ -1654,3 +1707,25 @@ async def test_native_partner_consult_stop_and_parent_cancellation(monkeypatch):
         await task
     assert manager.live.task.cancelled()
     assert not manager.live.subscribers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("answer_source", ["stream", "file"])
+async def test_codex_nonzero_exit_fails_even_with_partial_answer(monkeypatch, answer_source):
+    async def fake_stream(cmd, *, cwd=None):
+        if answer_source == "file":
+            from pathlib import Path
+            Path(cmd[cmd.index("-o") + 1]).write_text("Partial answer")
+        yield "stdout", '{"type":"item.updated","item":{"id":"m1","type":"agent_message","text":"Partial answer"}}'
+        yield "exit", "1"
+
+    monkeypatch.setattr(codex_mod, "stream_process_lines", fake_stream)
+    events = []
+
+    async def on_event(event):
+        events.append(event)
+
+    result = await CodexBackend().consult("question", on_event=on_event)
+    assert result.success is False
+    assert "code 1" in result.error
+    assert any(event.kind == "error" for event in events)

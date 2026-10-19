@@ -69,6 +69,16 @@ def remember_session(key: str, session_id: str, *, kind: str = "", cwd: str = ""
     _save(data)
 
 
+def forget_session(key: str) -> None:
+    """Drop one remembered backend session after failure or cancellation."""
+    if not key:
+        return
+    data = _load()
+    if key in data:
+        data.pop(key, None)
+        _save(data)
+
+
 def forget_connection(connection: str) -> None:
     """Drop every remembered session for a connection (on disconnect)."""
     data = _load()
@@ -80,4 +90,10 @@ def forget_connection(connection: str) -> None:
         _save(data)
 
 
-__all__ = ["session_key", "get_session", "remember_session", "forget_connection"]
+__all__ = [
+    "session_key",
+    "get_session",
+    "remember_session",
+    "forget_session",
+    "forget_connection",
+]

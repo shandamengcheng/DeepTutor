@@ -9,6 +9,7 @@ the CLI's final answer becomes the chat reply.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 import shutil
 
@@ -65,7 +66,12 @@ async def consult_selected_subagent(
         return None
 
     from deeptutor.services.subagent import get_backend, load_subagent_settings
-    from deeptutor.services.subagent.sessions import get_session, remember_session, session_key
+    from deeptutor.services.subagent.sessions import (
+        forget_session,
+        get_session,
+        remember_session,
+        session_key,
+    )
 
     name = connection["name"]
     kind = connection["kind"]
@@ -84,26 +90,42 @@ async def consult_selected_subagent(
     )
     image_dir, image_paths = _stage_images(images)
     try:
-        result = await backend.consult(
-            question,
-            on_event=on_event or _ignore_subagent_event,
-            cwd=connection.get("cwd") or None,
-            session_id=resume_id,
-            config=config,
-            images=image_paths or None,
-            partner_id=connection.get("partner_id") or None,
-        )
+        try:
+            result = await backend.consult(
+                question,
+                on_event=on_event or _ignore_subagent_event,
+                cwd=connection.get("cwd") or None,
+                session_id=resume_id,
+                config=config,
+                images=image_paths or None,
+                partner_id=connection.get("partner_id") or None,
+            )
+        except asyncio.CancelledError:
+            # A cancelled Codex CLI can leave its app-server turn running. Never
+            # resume that possibly busy session on the user's next request.
+            if stored_session_key:
+                forget_session(stored_session_key)
+            raise
+        except Exception:
+            if stored_session_key:
+                forget_session(stored_session_key)
+            raise
     finally:
         if image_dir is not None:
             shutil.rmtree(image_dir, ignore_errors=True)
 
-    if stored_session_key and result.session_id:
-        remember_session(
-            stored_session_key,
-            result.session_id,
-            kind=kind,
-            cwd=connection.get("cwd") or "",
-        )
+    if stored_session_key:
+        if result.success and result.final_text and result.session_id:
+            remember_session(
+                stored_session_key,
+                result.session_id,
+                kind=kind,
+                cwd=connection.get("cwd") or "",
+            )
+        else:
+            # Do not make an empty/failed response sticky. The next request gets
+            # a fresh backend session instead of repeatedly resuming a bad one.
+            forget_session(stored_session_key)
     return result
 
 

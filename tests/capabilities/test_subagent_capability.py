@@ -283,6 +283,62 @@ async def test_selected_subagent_followup_reuses_same_session(monkeypatch, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_failed_selected_subagent_forgets_stale_session(monkeypatch, tmp_path) -> None:
+    from deeptutor.services.subagent import sessions as sess
+
+    monkeypatch.setattr(sess, "_path", lambda: tmp_path / "subagent_sessions.json")
+    _bind(monkeypatch, kind="codex")
+    key = sess.session_key("chat-failed", "myagent")
+    sess.remember_session(key, "stale-session", kind="codex")
+
+    class FailingBackend(_FakeBackend):
+        async def consult(self, *args, **kwargs):
+            return ConsultResult(
+                session_id="stale-session",
+                success=False,
+                error="codex exited with code 1",
+            )
+
+    monkeypatch.setattr("deeptutor.services.subagent.get_backend", lambda kind: FailingBackend())
+    context = UnifiedContext(
+        user_message="retry",
+        knowledge_bases=["myagent"],
+        session_id="chat-failed",
+    )
+
+    result = await consult_selected_subagent(context, "retry")
+
+    assert result is not None and result.success is False
+    assert sess.get_session(key) is None
+
+
+@pytest.mark.asyncio
+async def test_cancelled_selected_subagent_forgets_stale_session(monkeypatch, tmp_path) -> None:
+    from deeptutor.services.subagent import sessions as sess
+
+    monkeypatch.setattr(sess, "_path", lambda: tmp_path / "subagent_sessions.json")
+    _bind(monkeypatch, kind="codex")
+    key = sess.session_key("chat-cancelled", "myagent")
+    sess.remember_session(key, "busy-session", kind="codex")
+
+    class CancelledBackend(_FakeBackend):
+        async def consult(self, *args, **kwargs):
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr("deeptutor.services.subagent.get_backend", lambda kind: CancelledBackend())
+    context = UnifiedContext(
+        user_message="retry",
+        knowledge_bases=["myagent"],
+        session_id="chat-cancelled",
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await consult_selected_subagent(context, "retry")
+
+    assert sess.get_session(key) is None
+
+
+@pytest.mark.asyncio
 async def test_direct_subagent_skips_plain_chat(monkeypatch) -> None:
     _bind(monkeypatch)
     assert await run_direct_subagent(UnifiedContext(user_message="hi"), StreamBus()) is False

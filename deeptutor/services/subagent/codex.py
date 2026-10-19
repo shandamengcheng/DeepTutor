@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
+import tempfile
 from typing import Any
 
 from deeptutor.services.subagent.base import OnEvent, SubagentBackend
@@ -131,7 +133,6 @@ class CodexBackend(SubagentBackend):
         partner_id: str | None = None,  # noqa: ARG002 — partner-only; ignored here
     ) -> ConsultResult:
         config = config or BackendConfig()
-        cmd = self._build_command(question, session_id=session_id, config=config, images=images)
         result = ConsultResult(session_id=session_id)
 
         async def emit(
@@ -140,25 +141,43 @@ class CodexBackend(SubagentBackend):
             result.event_count += 1
             await on_event(SubagentEvent(kind=kind, text=text, raw=raw, meta=meta or {}))
 
-        try:
-            async for channel, line in stream_process_lines(cmd, cwd=cwd):
-                if channel == "exit":
-                    if line != "0" and result.success and not result.final_text:
-                        result.success = False
-                        result.error = f"codex exited with code {line}"
-                        await emit(EVENT_ERROR, result.error, {"returncode": line})
-                    continue
-                event = _parse_json(line)
-                if event is None:
-                    if line.strip():
-                        await emit(EVENT_LOG, line, {"stream": channel})
-                    continue
-                await self._handle_event(event, result, emit)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("codex consult failed: %s", exc, exc_info=True)
-            result.success = False
-            result.error = str(exc)
-            await emit(EVENT_ERROR, str(exc), {})
+        with tempfile.TemporaryDirectory(prefix="deeptutor-codex-") as output_dir:
+            output_path = Path(output_dir) / "last-message.txt"
+            cmd = self._build_command(
+                question,
+                session_id=session_id,
+                config=config,
+                images=images,
+            )
+            # JSONL is useful for live progress but has changed shape between CLI
+            # releases. ``-o`` is the stable final-answer contract and gives us a
+            # fallback when the completion event contains no text.
+            cmd[-1:-1] = ["-o", str(output_path)]
+            try:
+                async for channel, line in stream_process_lines(cmd, cwd=cwd):
+                    if channel == "exit":
+                        if line != "0" and result.success:
+                            result.success = False
+                            result.error = f"codex exited with code {line}"
+                            await emit(EVENT_ERROR, result.error, {"returncode": line})
+                        continue
+                    event = _parse_json(line)
+                    if event is None:
+                        if line.strip():
+                            await emit(EVENT_LOG, line, {"stream": channel})
+                        continue
+                    await self._handle_event(event, result, emit)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("codex consult failed: %s", exc, exc_info=True)
+                result.success = False
+                result.error = str(exc)
+                await emit(EVENT_ERROR, str(exc), {})
+
+            if not result.final_text and output_path.is_file():
+                output_text = output_path.read_text(encoding="utf-8", errors="replace").strip()
+                if output_text:
+                    result.final_text = output_text
+                    await emit(EVENT_TEXT, output_text, {"source": "output_last_message"})
 
         return result
 
@@ -194,6 +213,11 @@ class CodexBackend(SubagentBackend):
                 text = _item_text(item)
                 if text:
                     kind = EVENT_REASONING if itype == "reasoning" else EVENT_TEXT
+                    # Some Codex versions stream the complete assistant answer in
+                    # ``item.updated`` and omit it from the final completion frame.
+                    # Keep the latest cumulative agent text as the fallback result.
+                    if itype in ("agent_message", "assistant_message"):
+                        result.final_text = text
                     await emit(kind, text, item, {"merge_id": mid})
             return
 
