@@ -51,6 +51,7 @@ _BLOCK_SEGMENTS: dict[str, str] = {
     "extended_tools": "extended_tools",
     "notebooks": "notebooks",
     "workspace": "workspace",
+    "workspace_instructions": "workspace_instructions",
 }
 _CAPABILITY_SEGMENT = "capability"
 

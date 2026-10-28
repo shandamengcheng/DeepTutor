@@ -701,7 +701,14 @@ export default memo(function ChatComposer({
 
   const doSend = useCallback(
     (content: string) => {
-      onSend(content)
+      // Keyboard and button submissions share the same admission checks.
+      // A refused submission must leave the draft in the input.
+      if (isStreaming && !awaitingUserReply) return false;
+      if (capabilityNeedsConfig && !capabilityConfigConfirmed) {
+        onRequestConfigConfirm();
+        return false;
+      }
+      onSend(content);
       if (!restoreFailedRef.current) {
         void saveWorkspaceDraft({ text: '', attachments: [] }).catch(() => {})
       }
@@ -710,10 +717,12 @@ export default memo(function ChatComposer({
       // Sending can move focus to the button or rerender the empty-state
       // composer into the conversation layout. Restore it after that update
       // so the user can keep typing, including after switching back to the tab.
-      focusTextarea()
+      focusTextarea();
+      return true;
     },
-    [focusTextarea, onSend]
-  )
+    [awaitingUserReply, capabilityConfigConfirmed, capabilityNeedsConfig,
+      focusTextarea, isStreaming, onRequestConfigConfirm, onSend],
+  );
 
   const { board: taskBoard } = useTaskBoard()
   const linkedTaskIds = taskSessionId
@@ -998,15 +1007,19 @@ export default memo(function ChatComposer({
       ),
     })
   }
-  if (knowledgeBases.length > 0) {
+  if (onToggleKB) {
     resourceItems.push({
       key: 'knowledge',
       group: 'Reference materials',
       summary: selectedKnowledgeBases.length
-        ? `${selectedKnowledgeBases.length} ${t('selected')}`
-        : t('Default'),
-      onClear: () => [...selectedKnowledgeBases].forEach(onToggleKB),
-      label: t('Knowledge'),
+        ? `${selectedKnowledgeBases.length} ${t("selected")}`
+        : knowledgeBases.length > 0
+          ? t("Default")
+          : t("No KB"),
+      onClear: selectedKnowledgeBases.length
+        ? () => [...selectedKnowledgeBases].forEach(onToggleKB)
+        : undefined,
+      label: t("Knowledge"),
       icon: Database,
       count: selectedKnowledgeBases.length,
       node: (
@@ -1181,7 +1194,7 @@ export default memo(function ChatComposer({
             ref={inputHandleRef}
             textareaRef={textareaRef}
             isVisualizeMode={isVisualizeMode}
-            isStreaming={isStreaming}
+            isStreaming={streamingBlocksSend}
             canSendEmpty={hasReferences}
             onSend={doSend}
             onInputChange={handleInputChange}
